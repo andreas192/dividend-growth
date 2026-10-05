@@ -1,7 +1,7 @@
 # Dividend growth screener and company analyzer
 
 Date: 2026-10-05
-Status: Draft, awaiting owner review
+Status: Approved 2026-10-05; clarified by the implementation plan and the local acceptance run.
 Depends on: `../investment` HTTP API (`GOLD_SCHEMA.md`, `docs/superpowers/specs/2026-10-05-gold-http-api-design.md`) and, for the cluster step, `../investment/docs/superpowers/specs/2026-10-05-container-deployment-design.md`
 Deferred work: `2026-10-05-dgi-roadmap.md`
 
@@ -61,18 +61,19 @@ Layout:
 config/scoring.yaml            pillar weights, metric bands, hard-filter defaults, tolerances
 src/dgi/cli.py, pipeline.py    wiring only (no unit spec)
 src/dgi/settings.py, report.py, fsutil.py
+src/dgi/schema.py              shared table definitions
 src/dgi/client/                the only HTTP code: paging, Arrow, dependency check
 src/dgi/metrics/               SQL (DuckDB): dividend_annual, fundamentals_annual, metrics_current, flags
 src/dgi/scoring/               config model, bands, pillars, coverage, hard filters
-src/dgi/cache/                 schema, atomic swap, meta, quality checks
-src/dgi/web/                   routes, templates, static (vendored ECharts), JSON series endpoints
+src/dgi/cache/                 {meta,build,checks,handle,screener,company,status}.py: schema use, atomic swap, meta, quality checks, read-only queries
+src/dgi/web/                   {app,series,format}.py, routes, templates, static (vendored ECharts), JSON series endpoints
 tests/                         offline, fixtures built in code
 deploy/k8s/                    kustomize base: namespace, PVC, configMapGenerator, web, refresh
 scripts/                       install_tools.sh, build_image.sh, deploy.sh, open.sh, check_isolation.sh
 docs/                          code-conventions.md, token-strategy.md, rate-limits.md, specs, plans
 ```
 
-Dependencies flow one way: `client -> metrics -> scoring -> cache -> web`. `web` imports `cache` only; `client` is imported by `pipeline` only.
+Dependencies flow one way: `client -> metrics -> scoring -> cache -> web`. `web` imports `cache` only; `client` is imported by `pipeline` only. The company page's daily series come from a `PriceSource` that `pipeline` injects into the web app, so `client` stays imported by `pipeline` only.
 
 ## Metrics and scoring
 
@@ -83,9 +84,9 @@ Inputs, all present in gold: `dividend_events`, `split_events`, `price_daily` / 
 | Pillar (default weight) | Metrics |
 |---|---|
 | Dividend record (30%) | Consecutive years of increases (streak), no-cut streak, 1/3/5/10-year dividend CAGR, yield vs own 5-year average yield, payment frequency |
-| Safety (30%) | Payout on EPS and on FCF (current and 5-year average), interest coverage, net debt / EBITDA, current ratio, years with positive earnings in the last 10 |
+| Safety (30%) | Payout on EPS and on FCF (current and 5-year average), interest coverage, net debt / EBITDA, current ratio, years with positive earnings in the last 10. Payout ratios are computed on dollars (dividends paid over net income and over FCF), capped at 999%; when a filer reports no dividends paid, the year's regular dividend per share times diluted shares is used. |
 | Growth and quality (20%) | 5-year CAGR of revenue, EPS and FCF per share; ROE; operating-margin stability; share-count trend |
-| Valuation (20%) | P/E, P/FCF, FCF yield, yield vs history, Gordon-growth fair-value range (growth capped, required return in config) shown as a range with a sensitivity grid |
+| Valuation (20%) | P/E, P/FCF, FCF yield, margin of safety against the Gordon-growth fair-value range (growth capped, required return in config) shown as a range with a sensitivity grid |
 
 ### Scoring rules
 
@@ -101,25 +102,27 @@ Inputs, all present in gold: `dividend_events`, `split_events`, `price_daily` / 
 - Annual dividend per share is the sum of split-adjusted payments per **calendar year**. Only complete years count; the current year is excluded from streak and CAGR.
 - Special dividends: in a year with more payments than the ticker's usual count, the largest payment is special if it is at least 1.5 times the median of that year's other payments. Specials are excluded from the annual total and raise a flag.
 - Streak rules and tolerances (a raise is more than `raise_tolerance` above the prior year, a cut is more than `cut_tolerance` below it; defaults 0.1% and 1%) are in config and unit-tested with a cut, a flat year, a split, a special dividend and a partial year.
-- Price multiples use TTM figures when four consecutive quarters exist and the latest fiscal year otherwise. The basis is stored per company and shown in the UI.
+- Price multiples use TTM figures when four consecutive quarters of net income, operating cash flow and capex end after the latest fiscal year (EPS is then TTM net income over the latest quarter's diluted shares, because gold never derives a Q4 EPS) and the latest fiscal year otherwise. The basis is stored per company and shown in the UI.
+- Per-share and share-count values from filings are restated to today's share basis with the splits whose ex-date is after the filing date.
+- The streak counts back to the start of the available dividend history (about 1970 for old companies); the UI marks a streak that reaches it with a plus.
 
 ### Universe
 
-Scored: companies with SIC outside banks, insurers and REITs, at least 5 years of dividend history, and a price. Everything else is listed with `scoring_status = not_scored` and a reason (`financial_or_reit`, `short_dividend_history`, `no_price`, `insufficient_data`). Support for financial companies depends on the investment project and is on the roadmap.
+Scored: companies with SIC outside banks and credit (6000-6199), insurance (6300-6411) and REITs (6798) (asset managers stay scored), at least 5 years of dividend history, and a price. Everything else is listed with `scoring_status = not_scored` and a reason (`financial_or_reit`, `short_dividend_history`, `no_price`, `insufficient_data`). Support for financial companies depends on the investment project and is on the roadmap.
 
 ## Data flow and cache
 
 ### Refresh, two stages
 
-1. **Pull and metrics.** Runs when the upstream `content_hash`, the contract version or the metrics code version differs from the cache `meta`.
+1. **Pull and metrics.** Runs when the upstream key (`content_hash` plus `gold_built_at` from `/health`; the hash alone is the schema hash and does not change when data does), the contract version or the metrics version (metrics code plus the `metrics:` section of `config/scoring.yaml`) differs from the cache `meta`.
    - `client` checks `/health` and `/contracts/v1`. Needed resources and columns must exist with expected types; additive changes pass, removals or retypes fail with a clear error; a `sunset` contract or 410 fails.
    - Bulk pulls as Arrow with filters, streamed in batches into DuckDB staging tables so memory stays bounded: `company`; `dividend_events`; `split_events`; annual and recent-quarter statement concepts from the `*_latest` views for about 11 years; latest prices and year-end closes from narrow `trade_date` windows (never the full price table).
-   - SQL builds `dividend_annual`, `fundamentals_annual`, `metrics_current` and the data-quality flags. Staging tables are dropped.
+   - SQL builds `dividend_annual`, `fundamentals_annual`, `metrics_current` and the data-quality flags. Staging happens in a working file; only the persisted tables are copied into the new cache.
 2. **Score.** Runs after stage 1 and whenever the scoring-config hash changes. Reads only the cache and writes `scores`, `score_detail` and `flags`. Editing `scoring.yaml` never needs an API pull.
 
 ### Cache tables (`dgi.duckdb`)
 
-`meta` (upstream hash, upstream build time, contract version, metrics version, scoring hash, built_at), `company_dim`, `dividend_annual`, `fundamentals_annual`, `metrics_current`, `scores`, `score_detail`, `flags`. Pillar scores are stored, so re-weighting in the UI is a weighted sum.
+`meta` (upstream hash, upstream build time, contract version, metrics version, scoring hash, built_at, `contract_warnings`), `company_dim`, `dividend_payment`, `dividend_annual`, `price_yearend`, `fundamentals_annual` (with `dividends_estimated`), `metrics_current`, `scores`, `score_detail`, `flags`. Pillar scores are stored, so re-weighting in the UI is a weighted sum.
 
 ### Safety
 
@@ -139,7 +142,7 @@ API unreachable or 503 (gold drift): refresh exits non-zero, the old cache stays
 
 ### Screener (`/`)
 
-- Filter bar: min streak, yield range, max payout on EPS and FCF, min market cap, min score, sector group, a toggle to show "not scored" with reasons. State is in the URL.
+- Filter bar: min streak, yield range, max payout on EPS and FCF, min market cap, min score, sector group, a toggle to show "not scored" with reasons. State is in the URL. A company with an unknown value fails a filter limit that is set.
 - Pillar-weight sliders, applied server-side to stored pillar scores.
 - Table: rank, ticker, name, sector, price, yield, streak, 5-year DGR, FCF payout, pillar scores, total, red flags. Sortable, server-side paged, CSV export.
 - Top strip: universe size, scored, passing filters, median yield.
@@ -155,7 +158,7 @@ API unreachable or 503 (gold drift): refresh exits non-zero, the old cache stays
 
 ### Other
 
-`/methodology` renders the bands and weights from `config/scoring.yaml`. `/health` shows cache hash, build time, counts and contract status. Chart design follows the `dataviz` skill; light and dark themes.
+`/methodology` renders the bands and weights from `config/scoring.yaml`. `/health` shows cache hash, build time, counts and contract status; it is always 200 (`{"status": "no_cache"}` before the first refresh) so readiness probes pass. Chart design follows the `dataviz` skill; light and dark themes.
 
 ## Deployment
 
