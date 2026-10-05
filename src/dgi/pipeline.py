@@ -6,6 +6,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import duckdb
+from starlette.applications import Starlette
 
 from dgi.cache.build import compact_into, discard, new_path, prepare_work_file, swap_in
 from dgi.cache.checks import CheckResult, run_cache_checks, verify_cache
@@ -14,6 +15,7 @@ from dgi.cache.status import CacheStatus, read_status
 from dgi.client.contract import ContractStatus, fetch_contract
 from dgi.client.http import ApiClient, Health
 from dgi.client.pulls import build_pulls
+from dgi.client.series import ApiPriceSource
 from dgi.client.stage import stage_pull
 from dgi.errors import CacheCheckError, CacheMissing
 from dgi.fsutil import file_sha256
@@ -22,6 +24,7 @@ from dgi.results import RefreshResult
 from dgi.scoring.config import ScoringConfig, load_scoring_config
 from dgi.scoring.stage import ScoreResult, score_cache
 from dgi.settings import Settings
+from dgi.web.app import create_app
 
 
 def pull_all(con: duckdb.DuckDBPyConnection, client: ApiClient, today: date) -> dict[str, int]:
@@ -103,3 +106,8 @@ def run_check(settings: Settings) -> list[CheckResult]:
         return run_cache_checks(con, None)
     finally:
         con.close()
+
+
+def build_web_app(settings: Settings, client: ApiClient) -> Starlette:
+    """The UI over the live cache; the company page's daily charts read one ticker at a time through `client`."""
+    return create_app(settings, load_scoring_config(settings.scoring_path), ApiPriceSource(client))

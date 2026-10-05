@@ -7,6 +7,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
 from dgi import cli
@@ -45,7 +46,7 @@ def sha(env) -> str:
 def test_the_commands_are_registered():
     result = runner.invoke(cli.app, ["--help"])
     assert result.exit_code == 0
-    for command in ("refresh", "status", "check"):
+    for command in ("refresh", "status", "check", "serve"):
         assert command in result.output
 
 
@@ -116,3 +117,31 @@ def test_status_and_check_read_the_live_cache(env, gold):
 def test_check_without_a_cache_exits_1_with_a_way_out(env):
     result = runner.invoke(cli.app, ["check"], env=env)
     assert result.exit_code == 1 and "run `dgi refresh`" in result.output
+
+
+def test_serve_builds_the_app_over_the_cache_and_one_value_traces_through_the_web_pages(env, gold, monkeypatch):
+    runner.invoke(cli.app, ["refresh"], env=env)
+    seen = {}
+
+    def fake_server(web_app, host, port):  # runs while `serve` still holds the API client, as uvicorn would
+        seen.update(host=host, port=port)
+        with TestClient(web_app) as client:
+            page = client.get("/company/ACME").text
+            seen["page"] = page
+            seen["list"] = client.get("/").text
+            seen["health"] = client.get("/health").json()
+            seen["daily"] = client.get("/api/company/ACME/daily").json()
+
+    monkeypatch.setattr(cli, "run_server", fake_server)
+    result = runner.invoke(cli.app, ["serve", "--port", "9001"], env=env)
+    assert result.exit_code == 0, result.output
+    assert (seen["host"], seen["port"]) == ("127.0.0.1", 9001)
+    assert "Acme Beverages" in seen["page"] and "$60.00" in seen["page"] and "DGI score" in seen["page"]   # price 60.0 came from the API
+    assert "ACME" in seen["list"] and seen["health"]["scored"] == 1
+    assert seen["daily"]["available"] is True and seen["daily"]["charts"][0]["id"] == "price"             # one ticker pulled on demand
+
+
+def test_serve_with_an_unreadable_scoring_config_exits_1(env, gold, monkeypatch):
+    monkeypatch.setattr(cli, "run_server", lambda *a: pytest.fail("the server must not start"))
+    result = runner.invoke(cli.app, ["serve"], env={**env, "DGI_SCORING_CONFIG": "/nonexistent/scoring.yaml"})
+    assert result.exit_code == 1 and "error:" in result.output

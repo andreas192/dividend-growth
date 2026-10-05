@@ -66,3 +66,12 @@ def test_describe_status_and_print_checks(capsys, tmp_path):
     print_checks([CheckResult("schema", True, "ok"), CheckResult("row_counts", False, "collapsed")])
     out = capsys.readouterr().out
     assert "PASS schema: ok" in out and "FAIL row_counts: collapsed" in out
+
+
+@pytest.mark.parametrize("host, warned", [("127.0.0.1", False), ("localhost", False), ("::1", False), ("0.0.0.0", True), ("192.168.1.5", True)])
+def test_exposure_warning_only_for_addresses_beyond_this_machine(host, warned):
+    from dgi.report import exposure_warning
+
+    message = exposure_warning(host)
+    assert (message is not None) == warned
+    assert message is None or "no authentication" in message

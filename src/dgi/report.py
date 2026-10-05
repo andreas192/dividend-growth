@@ -24,6 +24,16 @@ def guard(fn: Callable[[], T]) -> T:
         raise typer.Exit(code=1) from exc
 
 
+LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+
+
+def exposure_warning(host: str) -> str | None:
+    """The UI has no authentication: say so when it listens beyond this machine."""
+    if host in LOOPBACK:
+        return None
+    return f"warning: listening on {host}, not only on this machine, and the UI has no authentication"
+
+
 def _reasons(counts: dict[str, int]) -> str:
     return ", ".join(f"{reason}={n}" for reason, n in sorted(counts.items())) or "none"
 

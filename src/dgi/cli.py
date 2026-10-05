@@ -5,10 +5,12 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 import typer
+import uvicorn
+from starlette.applications import Starlette
 
 from dgi.client.http import ApiClient
-from dgi.pipeline import run_check, run_refresh, run_status
-from dgi.report import describe_refresh, describe_status, guard, print_checks
+from dgi.pipeline import build_web_app, run_check, run_refresh, run_status
+from dgi.report import describe_refresh, describe_status, exposure_warning, guard, print_checks
 from dgi.settings import Settings
 
 app = typer.Typer(help="Dividend growth screener over the investment platform API.", no_args_is_help=True)
@@ -24,6 +26,10 @@ def current_date() -> date:
 
 def current_time() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def run_server(web_app: Starlette, host: str, port: int) -> None:
+    uvicorn.run(web_app, host=host, port=port, log_level="info")
 
 
 @app.command()
@@ -55,3 +61,19 @@ def check() -> None:
     print_checks(results)
     if not all(r.passed for r in results):
         raise typer.Exit(code=1)
+
+
+@app.command()
+def serve(
+    host: str | None = typer.Option(None, "--host", help="Address to listen on (default: DGI_HOST or 127.0.0.1)."),
+    port: int | None = typer.Option(None, "--port", help="Port (default: DGI_PORT or 8760)."),
+) -> None:
+    """Serve the read-only web UI over the cache."""
+    settings = Settings.from_env()
+    settings = settings.model_copy(update={k: v for k, v in (("host", host), ("port", port)) if v is not None})
+    warning = exposure_warning(settings.host)
+    if warning:
+        typer.echo(warning, err=True)
+    with make_client(settings) as client:
+        web_app = guard(lambda: build_web_app(settings, client))
+        run_server(web_app, settings.host, settings.port)
