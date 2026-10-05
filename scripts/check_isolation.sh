@@ -1,15 +1,31 @@
 #!/bin/sh
-# Checks that work in this repo has not changed anything ../capital-trading or ../investment depends on.
+# Checks that work in this repo has not changed anything ../capital-trading, ../investment or the invest cluster's
+# other namespaces depend on.
 #   scripts/check_isolation.sh baseline   record the current state (run before installing anything)
 #   scripts/check_isolation.sh verify     re-record and diff against the baseline; exit 1 on any difference
-# Read-only: it only inspects. If the only difference is in a "repo" section, check whether you were
-# editing that repo yourself.
+# Read-only: it only inspects. Namespace dgi is this project's own and is left out of the cluster section. If the only
+# difference is in a "repo" section, check whether you were editing that repo yourself.
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CT="$ROOT/../capital-trading"
 INV="$ROOT/../investment"
 BASELINE="${TMPDIR:-/tmp}/dgi-isolation-baseline.txt"
+KUBECTL="$ROOT/.tools/kubectl"
+KUBECONFIG_FILE="${DGI_KUBECONFIG:-$INV/deploy/terraform/.kube/invest.config}"
+
+cluster_snapshot() {
+  # explicit kubeconfig and context, as in scripts/lib.sh; skipped when there is no cluster to look at
+  [ -x "$KUBECTL" ] && [ -f "$KUBECONFIG_FILE" ] || { echo "(no invest cluster to inspect)"; return; }
+  kc() { "$KUBECTL" --kubeconfig "$KUBECONFIG_FILE" --context kind-invest "$@"; }
+  echo "## invest cluster namespaces (dgi excluded)"
+  kc get namespaces -o name 2>/dev/null | grep -v '/dgi$' | sort
+  for ns in $(kc get namespaces -o name 2>/dev/null | sed 's|^namespace/||' | grep -v '^dgi$' | sort); do
+    echo "## objects in $ns"
+    kc -n "$ns" get deployments,statefulsets,daemonsets,cronjobs,services,configmaps,persistentvolumeclaims -o name 2>/dev/null | sort
+    kc -n "$ns" get deployments -o custom-columns=NAME:.metadata.name,GENERATION:.metadata.generation --no-headers 2>/dev/null | sort
+  done
+}
 
 snapshot() {
   echo "## python and pip on PATH"
@@ -26,7 +42,7 @@ snapshot() {
   ls -1 "$HOME/.local/bin" 2>/dev/null
   echo "## shell startup files"
   shasum "$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.bash_profile" 2>/dev/null
-  echo "## podman containers and machine"
+  echo "## podman containers (the kind node of the invest cluster is expected and unchanged) and machine"
   podman ps -a --format '{{.Names}} {{.Image}} {{.Ports}}' 2>/dev/null | sort
   podman machine list --format '{{.Name}} running={{.Running}}' 2>/dev/null
   echo "## capital-trading repo"
@@ -36,6 +52,7 @@ snapshot() {
   echo "## investment repo"
   git -C "$INV" rev-parse HEAD 2>/dev/null
   git -C "$INV" status --porcelain 2>/dev/null
+  cluster_snapshot
 }
 
 case "${1:-}" in
@@ -51,7 +68,7 @@ case "${1:-}" in
     CURRENT="$(mktemp)"
     snapshot > "$CURRENT"
     if diff -u "$BASELINE" "$CURRENT"; then
-      echo "OK: ../capital-trading and ../investment are unchanged."
+      echo "OK: ../capital-trading, ../investment and the invest cluster's other namespaces are unchanged."
       rm -f "$CURRENT"
     else
       echo "DIFFERENCE DETECTED (see diff above). Stop and report it." >&2
