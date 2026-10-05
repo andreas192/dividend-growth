@@ -9,6 +9,8 @@ from typing import Any
 import duckdb
 
 from dgi import schema
+from dgi.cache.build import compact_into
+from dgi.cache.meta import CacheMeta, write_meta
 from dgi.scoring.config import ScoringConfig, load_scoring_config
 from dgi.scoring.stage import score_cache
 
@@ -42,3 +44,18 @@ def scored_cache(companies: dict[str, tuple[str, dict[str, Any]]]) -> duckdb.Duc
     con = cache_with(companies)
     score_cache(con, CFG, TODAY)
     return con
+
+
+def make_meta(**overrides: Any) -> CacheMeta:
+    values: dict[str, Any] = dict(
+        upstream_key="hash-1|2026-10-04T06:00:00+00:00", upstream_built_at="2026-10-04T06:00:00+00:00",
+        contract_version="v1", metrics_version="1:abc", scoring_hash="s1", built_at="2026-10-05T07:00:00+00:00", contract_warnings="",
+    )
+    return CacheMeta(**{**values, **overrides})
+
+
+def persist(con: duckdb.DuckDBPyConnection, path: Path, meta: CacheMeta | None = None) -> Path:
+    """Write `con`'s cache tables (plus meta) to a cache file, as the pipeline's compaction does."""
+    write_meta(con, meta or make_meta())
+    compact_into(con, path)
+    return path
