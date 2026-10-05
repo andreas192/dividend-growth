@@ -1,0 +1,37 @@
+[project]
+name = "dgi"
+version = "0.1.0"
+description = "Dividend growth screener and company analyzer over the investment platform API"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.1",
+    "httpx>=0.27",
+    "jinja2>=3.1",
+    "pyarrow>=17",
+    "pydantic>=2.7",
+    "pyyaml>=6",
+    "starlette>=1.7.0",
+    "typer>=0.12",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx2>=2"]  # httpx2: what Starlette's TestClient now asks for
+
+[project.scripts]
+dgi = "dgi.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dgi"]
+
+[tool.uv]
+# Use only the uv-managed Python, never Homebrew's or miniconda's.
+python-preference = "only-managed"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
