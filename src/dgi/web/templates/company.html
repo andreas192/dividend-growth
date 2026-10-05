@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}{{ c.ticker }} · DGI Screener{% endblock %}
+{% block content %}
+{% set m = c.metrics %}
+{% set s = c.score %}
+<header class="company-head">
+  <div>
+    <h1>{{ c.name }} <span class="ticker">{{ c.ticker }}</span></h1>
+    <p class="sub">{{ c.sector_group or dash }}{% if c.sic_description %} · {{ c.sic_description }}{% endif %} · {{ m.price|money }}{% if m.price_date %} on {{ m.price_date }}{% endif %}</p>
+  </div>
+  {% if c.status == 'scored' %}
+    <div class="badge" aria-label="Score {{ s.total|score }} out of 100"><span class="value">{{ s.total|score }}</span><span class="label">DGI score</span></div>
+  {% else %}
+    <div class="badge muted"><span class="label">Not scored</span></div>
+  {% endif %}
+</header>
+
+{% if c.status != 'scored' %}
+  <section class="notice"><p><strong>Not scored.</strong> {{ c.reason|reason_label }}.</p></section>
+{% endif %}
+
+{% if c.flags %}
+  <ul class="flags" aria-label="Flags">
+    {% for f in c.flags %}
+      <li class="flag {{ f.severity }}"><span aria-hidden="true">{{ '▲' if f.severity == 'red' else 'ℹ' }}</span>
+        <strong>{{ 'Warning' if f.severity == 'red' else 'Note' }}:</strong> {{ f.text }}</li>
+    {% endfor %}
+  </ul>
+{% endif %}
+
+{% if c.status == 'scored' %}
+<section aria-labelledby="pillars-h">
+  <h2 id="pillars-h">Score by pillar</h2>
+  <div class="bars">
+    {% for p in pillars %}
+      <div class="bar-row"><span class="name">{{ pillar_labels[p] }}</span>
+        <div class="track"><div class="fill" style="width: {{ (s[p] or 0)|round(0)|int }}%"></div></div>
+        <span class="num">{{ s[p]|score }}</span></div>
+    {% endfor %}
+  </div>
+  <p class="note">Data coverage {{ (s.coverage * 100)|round(0)|int }}% of the weighted metrics.</p>
+</section>
+{% endif %}
+
+<section class="tiles" aria-label="Key figures">
+  <div class="tile"><span class="label">Dividend yield</span><span class="value">{{ m.div_yield|pct }}</span></div>
+  <div class="tile"><span class="label">5-year dividend growth</span><span class="value">{{ m.dgr_5|pct }}</span></div>
+  <div class="tile"><span class="label">Years of increases</span><span class="value">{{ m.streak|streak_label(m.years_history) }}</span></div>
+  <div class="tile"><span class="label">Payout of earnings</span><span class="value">{{ m.payout_earnings|pct(0) }}</span></div>
+  <div class="tile"><span class="label">Payout of free cash flow</span><span class="value">{{ m.payout_fcf|pct(0) }}</span></div>
+  {% if s.fair_value_mid is not none %}
+  <div class="tile"><span class="label">Fair value (range)</span>
+    <span class="value">{{ s.fair_value_mid|money(0) }}</span>
+    <span class="sub">{{ s.fair_value_low|money(0) }} to {{ s.fair_value_high|money(0) }}</span></div>
+  <div class="tile"><span class="label">Margin of safety</span><span class="value">{{ s.margin_of_safety|pct(0) }}</span></div>
+  {% endif %}
+</section>
+
+<div id="daily-notice" class="note" role="status"></div>
+<section aria-label="Charts"><div id="charts" class="chart-grid"></div></section>
+<script type="application/json" id="charts-data">{{ charts|tojson }}</script>
+
+{% if valuation %}
+<section aria-labelledby="val-h">
+  <h2 id="val-h">Valuation</h2>
+  <div class="tiles">
+    <div class="tile"><span class="label">P/E</span><span class="value">{{ m.pe|num(1) }}</span></div>
+    <div class="tile"><span class="label">Price / free cash flow</span><span class="value">{{ m.p_fcf|num(1) }}</span></div>
+    <div class="tile"><span class="label">Free cash flow yield</span><span class="value">{{ m.fcf_yield|pct }}</span></div>
+    <div class="tile"><span class="label">Yield vs 5-year average</span><span class="value">{{ m.yield_vs_avg|pct(0) }}</span></div>
+  </div>
+  <p class="note">Earnings and cash flow are on the {{ 'last four quarters' if m.basis == 'ttm' else 'latest fiscal year' }}.
+    Fair value is the Gordon growth model on the trailing dividend of {{ valuation.dps|money }}; growth is capped.</p>
+  <div class="table-wrap"><table class="grid" aria-label="Fair value by required return and dividend growth">
+    <caption>Fair value per share by required return (rows) and dividend growth (columns)</caption>
+    <thead><tr><th>Required return</th>{% for g in valuation.growths %}<th class="num">{{ (g * 100)|round(0)|int }}% growth</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for r in valuation.returns %}{% set row = loop.index0 %}
+      <tr><th>{{ (r * 100)|round(1) }}%</th>
+        {% for g in valuation.growths %}{% set v = valuation.grid[row][loop.index0] %}
+          <td class="num">{{ v|money(0) if v is not none else dash }}</td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+
+{% if c.details %}
+<section aria-labelledby="why-h">
+  <h2 id="why-h">Why this score</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Metric</th><th>Pillar</th><th class="num">Value</th><th class="num">Band score</th><th class="num">Weight</th>
+      <th class="num">Points of total</th><th class="num">Percentile</th></tr></thead>
+    <tbody>
+    {% for d in c.details %}
+      <tr><td>{{ d.metric|metric_label }}</td><td>{{ pillar_labels[d.pillar] }}</td><td class="num">{{ d.metric|metric_value(d.value) }}</td>
+        <td class="num">{{ d.band_score|score }}</td><td class="num">{{ d.weight|num(1) }}</td><td class="num">{{ d.contribution|num(1) }}</td>
+        <td class="num">{{ d.percentile|score }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="note">The band score maps a value to 0–100 using the bands on the <a href="/methodology">methodology</a> page. Points of total add up to the score. The percentile ranks the value among all scored companies.</p>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script>window.dgiInitCompany && window.dgiInitCompany({{ c.ticker|tojson }});</script>{% endblock %}
