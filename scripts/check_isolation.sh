@@ -60,19 +60,6 @@ cluster_snapshot() {
 }
 
 snapshot() {
-  # explicit kubeconfig and context, as in scripts/lib.sh; skipped when there is no cluster to look at
-  [ -x "$KUBECTL" ] && [ -f "$KUBECONFIG_FILE" ] || { echo "(no invest cluster to inspect)"; return; }
-  kc() { "$KUBECTL" --kubeconfig "$KUBECONFIG_FILE" --context kind-invest "$@"; }
-  echo "## invest cluster namespaces (dgi excluded)"
-  kc get namespaces -o name 2>/dev/null | grep -v '/dgi$' | sort
-  for ns in $(kc get namespaces -o name 2>/dev/null | sed 's|^namespace/||' | grep -v '^dgi$' | sort); do
-    echo "## objects in $ns"
-    kc -n "$ns" get deployments,statefulsets,daemonsets,cronjobs,services,configmaps,persistentvolumeclaims -o name 2>/dev/null | sort
-    kc -n "$ns" get deployments -o custom-columns=NAME:.metadata.name,GENERATION:.metadata.generation --no-headers 2>/dev/null | sort
-  done
-}
-
-snapshot() {
   echo "## python and pip on PATH"
   which -a python3 python pip pip3 2>/dev/null
   echo "## Homebrew python packages"

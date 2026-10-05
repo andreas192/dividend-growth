@@ -29,8 +29,9 @@ if [ "${1:-}" = "--refresh" ]; then
   DEADLINE=$(( $(date +%s) + 3660 ))
   STATUS=1
   while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-    SUCCEEDED="$(kc -n "$NAMESPACE" get "job/$JOB" -o jsonpath='{.status.succeeded}')"
-    FAILED="$(kc -n "$NAMESPACE" get "job/$JOB" -o jsonpath='{.status.failed}')"
+    # a transient API error counts as "not yet"; the next poll retries and the deadline still bounds the loop
+    SUCCEEDED="$(kc -n "$NAMESPACE" get "job/$JOB" -o jsonpath='{.status.succeeded}')" || true
+    FAILED="$(kc -n "$NAMESPACE" get "job/$JOB" -o jsonpath='{.status.failed}')" || true
     if [ -n "$SUCCEEDED" ] && [ "$SUCCEEDED" -gt 0 ]; then STATUS=0; break; fi
     if [ -n "$FAILED" ] && [ "$FAILED" -gt 0 ]; then break; fi
     sleep 10
