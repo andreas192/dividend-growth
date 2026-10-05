@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Methodology · DGI Screener{% endblock %}
+{% block content %}
+<h1>Methodology</h1>
+<p>Companies are scored from 0 to 100 on four pillars. Each metric is mapped to 0–100 with the bands below (absolute bands, so a score does not shift when the universe changes), then averaged inside its pillar by weight; the total is the weighted mean of the pillars a company has data for. Missing metrics lower the company's coverage; below {{ (cfg.universe.min_coverage * 100)|round(0)|int }}% coverage it is not ranked. These values come from <code>config/scoring.yaml</code>.</p>
+
+<h2>Pillar weights</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Pillar</th><th class="num">Weight</th></tr></thead>
+  <tbody>{% for p in pillars %}<tr><td>{{ pillar_labels[p] }}</td><td class="num">{{ (cfg.pillars[p] * 100)|round(0)|int }}%</td></tr>{% endfor %}</tbody>
+</table></div>
+
+<h2>Metric bands</h2>
+<p class="note">Between two points the score is interpolated linearly; outside the first and last point it stays flat.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Metric</th><th>Pillar</th><th class="num">Weight</th><th>Value → score</th></tr></thead>
+  <tbody>
+  {% for name, b in cfg.bands.items() %}
+    <tr><td>{{ name|metric_label }}</td><td>{{ pillar_labels[b.pillar] }}</td><td class="num">{{ b.weight|num(1) }}</td>
+      <td>{% for x, y in b.points %}{{ name|metric_value(x) }} → {{ y|round(0)|int }}{{ ', ' if not loop.last }}{% endfor %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+<h2>Screener filters (defaults)</h2>
+<ul>
+  <li>Minimum years of dividend increases: {{ cfg.hard_filters.min_streak }}</li>
+  <li>Maximum payout of free cash flow: {{ cfg.hard_filters.max_payout_fcf|pct(0) }}</li>
+  <li>Minimum market cap: {{ cfg.hard_filters.min_market_cap|big }}</li>
+  <li>Filters are applied separately from the score and can be changed on the screener.</li>
+</ul>
+
+<h2>Who is scored</h2>
+<ul>
+  <li>At least {{ cfg.universe.min_dividend_years }} complete years of dividend history, a recent price and fundamentals from the last {{ cfg.universe.max_fundamentals_age_days }} days.</li>
+  <li>Banks, insurers and REITs are listed as "not scored" (SIC ranges {% for lo, hi in cfg.universe.excluded_sic_ranges %}{{ lo }}–{{ hi }}{{ ', ' if not loop.last }}{% endfor %}): payout and coverage ratios do not describe those businesses.</li>
+</ul>
+
+<h2>Dividend handling</h2>
+<ul>
+  <li>Payments are restated to today's share basis using split events before they are summed, so splits never create fake cuts or raises.</li>
+  <li>Annual dividends are calendar-year sums of complete years. A raise is more than {{ (cfg.metrics.raise_tolerance * 100)|round(1) }}% above the prior year, a cut more than {{ (cfg.metrics.cut_tolerance * 100)|round(1) }}% below it.</li>
+  <li>An extra payment at least {{ cfg.metrics.special_ratio }}× the median regular one, in a year with more payments than usual, is a special dividend: excluded from the totals and flagged.</li>
+  <li>Payout ratios use cash dividends paid over net income and over free cash flow, shown up to {{ (cfg.metrics.payout_cap * 100)|round(0)|int }}%. When a filer reports no dividends paid, the year's regular dividend per share times diluted shares stands in.</li>
+  <li>The streak counts back to the start of the available dividend history (usually around 1970). A plus sign after it means the real record may be longer.</li>
+</ul>
+
+<h2>Fair value</h2>
+<p>Gordon growth on the trailing dividend: value = dividend × (1 + g) / (r − g), with required return r = {{ (cfg.valuation.required_return * 100)|round(1) }}% and growth g equal to the 5-year dividend growth, kept between {{ (cfg.valuation.growth_floor * 100)|round(0)|int }}% and {{ (cfg.valuation.growth_cap * 100)|round(0)|int }}%. The range moves r and g by {{ (cfg.valuation.range_delta * 100)|round(1) }} points. It is a sensitivity aid, not a price target.</p>
+
+<h2>Warnings</h2>
+<p>Shown outside the score: a dividend cut or suspension in the last five years; a payout above 100% of earnings or of free cash flow; negative free cash flow; a dividend in the price data at or above the share price (likely a data error); and, as notes, special dividends and an irregular number of payments.</p>
+{% endblock %}
