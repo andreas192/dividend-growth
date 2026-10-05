@@ -109,7 +109,7 @@ def screener_csv(request: Request) -> Response:
     writer.writerow(CSV_COLUMNS)
     for r in rows:
         writer.writerow([
-            r.position, r.ticker, fmt.csv_safe(r.name), r.sector or "", r.price, _times100(r.div_yield), r.streak, _times100(r.dgr_5),
+            r.position, fmt.csv_safe(r.ticker), fmt.csv_safe(r.name), fmt.csv_safe(r.sector), r.price, _times100(r.div_yield), r.streak, _times100(r.dgr_5),
             _times100(r.payout_fcf), _times100(r.payout_earnings), r.market_cap, r.dividend, r.safety, r.growth, r.valuation, r.score,
             _times100(r.margin_of_safety), " ".join(r.red_flags),
         ])

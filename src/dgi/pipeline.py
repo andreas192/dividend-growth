@@ -101,9 +101,14 @@ def run_check(settings: Settings) -> list[CheckResult]:
     path = settings.cache_path
     if not path.exists():
         raise CacheMissing(f"no cache at {path}; run `dgi refresh`")
-    con = duckdb.connect(str(path), read_only=True)
+    try:
+        con = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error as exc:
+        raise CacheMissing(f"cannot open the cache at {path}: {exc}; run `dgi refresh --force`") from exc
     try:
         return run_cache_checks(con, None)
+    except duckdb.Error as exc:
+        raise CacheMissing(f"the cache at {path} is unreadable: {exc}; run `dgi refresh --force`") from exc
     finally:
         con.close()
 

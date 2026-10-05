@@ -31,25 +31,38 @@ REASON_LABELS = {
 }
 
 
+UNITS = ((1e12, "T"), (1e9, "B"), (1e6, "M"))
+
+
+def _signed(value: float, body: str) -> str:
+    """The minus sign goes first, and a negative that rounds to zero shows no sign."""
+    return "-" + body if value < 0 and body.strip("0.,$%TBM") else body
+
+
 def pct(value: float | None, digits: int = 1) -> str:
-    return DASH if value is None else f"{value * 100:.{digits}f}%"
+    return DASH if value is None else _signed(value, f"{abs(value) * 100:.{digits}f}%")
 
 
 def num(value: float | None, digits: int = 1) -> str:
-    return DASH if value is None else f"{value:,.{digits}f}"
+    return DASH if value is None else _signed(value, f"{abs(value):,.{digits}f}")
 
 
 def money(value: float | None, digits: int = 2) -> str:
-    return DASH if value is None else f"${value:,.{digits}f}"
+    return DASH if value is None else _signed(value, f"${abs(value):,.{digits}f}")
+
+
+def _big_body(magnitude: float) -> str:
+    for i, (limit, suffix) in enumerate(UNITS):
+        if magnitude >= limit:
+            if round(magnitude / limit, 1) >= 1000 and i > 0:
+                limit, suffix = UNITS[i - 1]  # 999.96M shows as 1.0B, not 1,000.0M
+            return f"${magnitude / limit:,.1f}{suffix}"
+    rounded = round(magnitude)
+    return f"${rounded:,}" if rounded < UNITS[-1][0] else "$1.0M"
 
 
 def big(value: float | None) -> str:
-    if value is None:
-        return DASH
-    for limit, suffix in ((1e12, "T"), (1e9, "B"), (1e6, "M")):
-        if abs(value) >= limit:
-            return f"${value / limit:,.1f}{suffix}"
-    return f"${value:,.0f}"
+    return DASH if value is None else _signed(value, _big_body(abs(value)))
 
 
 def score(value: float | None) -> str:
@@ -83,6 +96,6 @@ def reason_label(reason: str | None) -> str:
 
 
 def csv_safe(text: Any) -> str:
-    """Stop a spreadsheet from running a cell: text starting with = + - @ gets a leading apostrophe."""
+    """Stop a spreadsheet from running a cell: text starting with a tab or CR, or whose first non-blank character is = + - @, gets a leading apostrophe."""
     value = "" if text is None else str(text)
-    return "'" + value if value[:1] in ("=", "+", "-", "@") else value
+    return "'" + value if value[:1] in ("\t", "\r") or value.lstrip()[:1] in ("=", "+", "-", "@") else value

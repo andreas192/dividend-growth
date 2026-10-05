@@ -96,3 +96,10 @@ def test_health_without_a_build_time_still_has_a_key():
 def test_get_json_rejects_a_body_that_is_not_json():
     with pytest.raises(ApiError, match="not JSON"):
         make_client(lambda r: httpx.Response(200, content=b"<html>")).get_json("/health")
+
+
+@pytest.mark.parametrize("body", [{"gold_built_at": "t"}, ["content_hash"], "ok", {"content_hash": 5}])
+def test_a_health_body_without_a_content_hash_is_an_api_error(body):
+    client = make_client(lambda r: httpx.Response(200, json=body))
+    with pytest.raises(ApiError, match="/health"):
+        client.health()

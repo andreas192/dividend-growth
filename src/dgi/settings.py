@@ -4,7 +4,9 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+
+from dgi.errors import ConfigError
 
 API_VERSION = "v1"
 
@@ -34,4 +36,8 @@ class Settings(BaseModel):
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
         source = os.environ if env is None else env
-        return cls(**{field: source[name] for field, name in _ENV_NAMES.items() if name in source})
+        try:
+            return cls(**{field: source[name] for field, name in _ENV_NAMES.items() if name in source})
+        except ValidationError as exc:
+            bad = ", ".join(_ENV_NAMES[str(e["loc"][0])] for e in exc.errors())
+            raise ConfigError(f"invalid setting in the environment: {bad}") from exc

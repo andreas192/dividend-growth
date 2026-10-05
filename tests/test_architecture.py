@@ -16,13 +16,18 @@ ALLOWED = {
 }
 
 
+RELATIVE = "<relative import>"  # in no ALLOWED set: a relative import fails the layering test
+
+
 def dgi_imports(path: Path) -> set[str]:
-    """The first component after `dgi` of every absolute import in the file."""
+    """The first component after `dgi` of every absolute import in the file; a relative import shows up as RELATIVE."""
     found: set[str] = set()
     for node in ast.walk(ast.parse(path.read_text())):
         if isinstance(node, ast.Import):
             found |= {a.name.split(".")[1] for a in node.names if a.name.startswith("dgi.")}
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+        elif isinstance(node, ast.ImportFrom) and node.level > 0:
+            found.add(RELATIVE)
+        elif isinstance(node, ast.ImportFrom) and node.module:
             parts = node.module.split(".")
             if parts[0] == "dgi" and len(parts) > 1:
                 found.add(parts[1])
@@ -37,6 +42,12 @@ def test_the_import_scanner_reads_each_import_form(tmp_path):
     assert dgi_imports(f) == {"client", "cache", "schema", "fsutil"}
 
 
+def test_relative_imports_are_reported_so_they_cannot_dodge_the_layering(tmp_path):
+    f = tmp_path / "m.py"
+    f.write_text("from ..cache import x\nfrom . import web\nfrom .meta import y\n")
+    assert dgi_imports(f) == {RELATIVE}
+
+
 @pytest.mark.parametrize("package", sorted(ALLOWED))
 def test_each_layer_imports_only_what_it_may(package):
     folder = SRC / package
@@ -48,6 +59,12 @@ def test_each_layer_imports_only_what_it_may(package):
         if dgi_imports(path) - ALLOWED[package]
     }
     assert offenders == {}
+
+
+def test_the_layering_test_fails_on_a_relative_import(tmp_path):
+    f = tmp_path / "m.py"
+    f.write_text("from ..cache import x\n")
+    assert dgi_imports(f) - ALLOWED["web"] == {RELATIVE}
 
 
 def test_only_the_pipeline_and_the_cli_import_the_client():

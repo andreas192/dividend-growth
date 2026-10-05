@@ -23,3 +23,12 @@ def test_from_env_overrides():
 
 def test_from_env_ignores_unrelated_variables():
     assert Settings.from_env({"PATH": "/usr/bin"}) == Settings()
+
+
+def test_a_malformed_environment_value_is_a_config_error_naming_the_variable():
+    import pytest
+
+    from dgi.errors import ConfigError
+
+    with pytest.raises(ConfigError, match="DGI_PORT"):
+        Settings.from_env({"DGI_PORT": "abc"})

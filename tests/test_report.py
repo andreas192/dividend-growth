@@ -27,6 +27,32 @@ def test_guard_lets_other_exceptions_through():
         guard(bug)
 
 
+def test_guard_turns_duckdb_errors_into_exit_1_with_the_first_line(capsys):
+    import duckdb
+
+    def boom():
+        raise duckdb.IOException("file is not a database\nsecond line")
+
+    with pytest.raises(typer.Exit) as exc:
+        guard(boom)
+    assert exc.value.exit_code == 1
+    err = capsys.readouterr().err
+    assert "error: cache or database error: " in err and "file is not a database" in err and "second line" not in err
+
+
+def test_guard_turns_validation_errors_into_exit_1(capsys):
+    from dgi.settings import Settings
+
+    def boom():
+        Settings(port="abc")
+
+    with pytest.raises(typer.Exit) as exc:
+        guard(boom)
+    assert exc.value.exit_code == 1
+    err = capsys.readouterr().err
+    assert "error: invalid configuration or API response: " in err and "port" in err and "Traceback" not in err
+
+
 def test_every_error_type_is_a_dgi_error():
     from dgi import errors
 
@@ -68,7 +94,10 @@ def test_describe_status_and_print_checks(capsys, tmp_path):
     assert "PASS schema: ok" in out and "FAIL row_counts: collapsed" in out
 
 
-@pytest.mark.parametrize("host, warned", [("127.0.0.1", False), ("localhost", False), ("::1", False), ("0.0.0.0", True), ("192.168.1.5", True)])
+@pytest.mark.parametrize("host, warned", [
+        ("127.0.0.1", False), ("127.0.0.2", False), ("localhost", False), ("::1", False),
+        ("0.0.0.0", True), ("::", True), ("192.168.1.5", True), ("my-host.lan", True),
+    ])
 def test_exposure_warning_only_for_addresses_beyond_this_machine(host, warned):
     from dgi.report import exposure_warning
 

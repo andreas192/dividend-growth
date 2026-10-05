@@ -1,4 +1,5 @@
 import duckdb
+import pytest
 
 from dgi.cache.build import compact_into, discard, new_path, prepare_work_file, swap_in, work_path
 from dgi.cache.meta import RefreshPlan
@@ -60,6 +61,14 @@ def test_swap_in_replaces_the_live_file_and_leaves_no_candidate(tmp_path):
     con = duckdb.connect(str(live), read_only=True)
     assert con.execute("SELECT ticker FROM company_dim").fetchall() == [("NEW",)]
     con.close()
+
+
+def test_swap_in_with_a_missing_candidate_raises_and_leaves_the_live_file_alone(tmp_path):
+    live = persist(cache_with({"OLD": ("2080", {})}), tmp_path / "dgi.duckdb")
+    before = live.read_bytes()
+    with pytest.raises(OSError):
+        swap_in(new_path(live), live)
+    assert live.read_bytes() == before
 
 
 def test_discard_removes_a_candidate_and_its_wal_and_tolerates_absence(tmp_path):

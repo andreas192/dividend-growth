@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 import pyarrow as pa
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from dgi.errors import ApiError, ApiUnavailable, ContractError
 from dgi.settings import API_VERSION
@@ -86,7 +86,10 @@ class ApiClient:
             raise ApiError(f"GET {path} answered 200 but the body is not JSON") from exc
 
     def health(self) -> Health:
-        return Health(**self.get_json("/health"))
+        try:
+            return Health.model_validate(self.get_json("/health"))
+        except ValidationError as exc:
+            raise ApiError(f"GET /health answered 200 but the body is not a health report: {exc.error_count()} invalid field(s)") from exc
 
     def pages(self, resource: str, filters: Mapping[str, str]) -> Iterator[pa.Table]:
         """One Arrow table per page. An empty resource yields one empty table that keeps its schema."""

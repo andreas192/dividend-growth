@@ -38,7 +38,7 @@ def refresh(
     api: str | None = typer.Option(None, "--api", help="Investment API base URL (default: DGI_INVEST_API_URL)."),
 ) -> None:
     """Pull from the API when upstream changed, build metrics, score, check, and swap the cache in."""
-    settings = Settings.from_env()
+    settings = guard(Settings.from_env)
     if api:
         settings = settings.model_copy(update={"api_url": api})
     with make_client(settings) as client:
@@ -49,14 +49,14 @@ def refresh(
 @app.command()
 def status() -> None:
     """Show what the cache was built from and what it holds."""
-    settings = Settings.from_env()
+    settings = guard(Settings.from_env)
     typer.echo(describe_status(guard(lambda: run_status(settings)), settings.cache_path))
 
 
 @app.command()
 def check() -> None:
     """Run the quality checks on the live cache."""
-    settings = Settings.from_env()
+    settings = guard(Settings.from_env)
     results = guard(lambda: run_check(settings))
     print_checks(results)
     if not all(r.passed for r in results):
@@ -69,7 +69,7 @@ def serve(
     port: int | None = typer.Option(None, "--port", help="Port (default: DGI_PORT or 8760)."),
 ) -> None:
     """Serve the read-only web UI over the cache."""
-    settings = Settings.from_env()
+    settings = guard(Settings.from_env)
     settings = settings.model_copy(update={k: v for k, v in (("host", host), ("port", port)) if v is not None})
     warning = exposure_warning(settings.host)
     if warning:

@@ -82,14 +82,17 @@ def test_not_scored_companies_are_listed_with_their_reason(web):
 
 
 def test_csv_export_matches_the_table_and_neutralizes_formulas(tmp_path):
-    con = scored_cache(COMPANIES)
+    con = scored_cache({**COMPANIES, "-ZZ": ("2080", {"streak": 9})})
     con.execute("UPDATE company_dim SET name = '=HYPERLINK(\"http://evil\")' WHERE ticker = 'AAA'")
+    con.execute("UPDATE scores SET sector_group = '@SUM(1)' WHERE ticker = 'BBB'")
     persist(con, tmp_path / "dgi.duckdb")
     with TestClient(create_app(Settings(data_dir=tmp_path), CFG)) as client:
         response = client.get("/screener.csv?min_streak=0&max_payout_fcf=&min_cap_bn=0")
     assert response.headers["content-type"].startswith("text/csv") and "attachment" in response.headers["content-disposition"]
     table = list(csv.DictReader(io.StringIO(response.text)))
-    assert [r["ticker"] for r in table] == ["AAA", "EEE", "BBB", "DDD", "CCC"]   # best score first
+    assert "'-ZZ" in [r["ticker"] for r in table]          # a ticker starting with - is neutralized too
+    assert [r["ticker"] for r in table if r["ticker"] != "'-ZZ"] == ["AAA", "EEE", "BBB", "DDD", "CCC"]   # best score first
+    assert next(r for r in table if r["ticker"] == "BBB")["sector"] == "'@SUM(1)"
     aaa = next(r for r in table if r["ticker"] == "AAA")
     assert aaa["name"].startswith("'=") and aaa["yield_pct"] == "2.5" and aaa["streak"] == "30"
     ccc = next(r for r in table if r["ticker"] == "CCC")
@@ -128,6 +131,16 @@ def test_the_ranked_table_pages_with_a_next_link_when_there_are_more_rows_than_t
         second = client.get("/?size=10&page=2").text
     assert len(links(first)) == 10 and "Page 1 of 2" in first and "page=2" in first and "Next" in first and "Previous" not in first
     assert len(links(second)) == 2 and "Page 2 of 2" in second and "Previous" in second and "Next" not in second
+
+
+def test_page_links_keep_a_non_default_size(tmp_path):
+    persist(scored_cache(many(25, "R", {"streak": 20})), tmp_path / "dgi.duckdb")
+    with TestClient(create_app(Settings(data_dir=tmp_path), CFG)) as client:
+        text = client.get("/?size=20").text
+        default = client.get("/").text
+    assert "page=2" in text and re.search(r'href="/\?[^"]*page=2[^"]*"', text)
+    assert all("size=20" in href for href in re.findall(r'href="(/\?[^"]*page=2[^"]*)"', text))
+    assert "size=" not in default
 
 
 def test_the_not_scored_list_is_paged_and_a_page_past_the_end_clamps(tmp_path):

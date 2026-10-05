@@ -30,3 +30,9 @@ def test_missing_values_never_raise_a_flag():
 
 def test_specials_and_irregular_payment_counts_are_information_not_red():
     assert codes({"special_count_5y": 1, "irregular_payments": True}) == [("special_dividend", "info"), ("irregular_payments", "info")]
+
+
+def test_nan_never_raises_a_numeric_flag():
+    nan = float("nan")
+    row = {"cut_years_5y": nan, "payout_earnings": nan, "payout_fcf": nan, "fcf_latest": nan, "suspect_dividend_count": nan, "special_count_5y": nan}
+    assert compute_flags(row) == []

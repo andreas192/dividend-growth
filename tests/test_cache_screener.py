@@ -3,6 +3,7 @@ import pytest
 from dgi.cache import (
     BadQuery, HardFilters, PILLARS, export_rows, parse_query, query_screener, query_unscored, scatter_points, sector_groups, universe_stats,
 )
+from dgi.cache.screener import SORTS
 from tests.cache_fixtures import CFG, scored_cache
 from tests.web_fixtures import COMPANIES
 
@@ -107,11 +108,48 @@ def test_sorting_ties_break_by_ticker_and_nulls_go_last(con):
     assert tickers(query_screener(con, query(sort="streak", dir="asc", **everything)))[0] == "DDD"
 
 
+EVERYTHING = dict(min_streak=0, max_payout_fcf="", min_cap_bn=0)
+
+
+@pytest.mark.parametrize("direction", ["asc", "desc"])
+def test_a_null_sort_value_goes_last_in_both_directions_and_equal_values_break_by_ticker(direction):
+    con = scored_cache({
+        "ZZZ": ("2080", {"div_yield": 0.04}), "AAA": ("2080", {"div_yield": 0.04}), "MMM": ("2080", {"div_yield": 0.02}),
+        "NUL": ("2080", {"div_yield": None}),
+    })
+    rows = query_screener(con, query(sort="yield", dir=direction, **EVERYTHING)).rows
+    assert [r.ticker for r in rows][-1] == "NUL" and rows[-1].div_yield is None
+    expected = ["MMM", "AAA", "ZZZ"] if direction == "asc" else ["AAA", "ZZZ", "MMM"]
+    assert [r.ticker for r in rows][:3] == expected
+
+
+@pytest.mark.parametrize("sort", sorted(SORTS))
+def test_every_sort_key_runs_and_returns_rows(con, sort):
+    page = query_screener(con, query(sort=sort, **EVERYTHING))
+    assert len(page.rows) == 5
+
+
+def test_a_hostile_sector_value_is_only_data():
+    con = scored_cache(COMPANIES)
+    page = query_screener(con, query(sector="x' OR '1'='1"))
+    assert page.total == 0 and page.rows == []
+
+
 def test_paging_reports_total_pages_and_clamps_a_page_past_the_end(con):
     everything = dict(min_streak=0, max_payout_fcf="", min_cap_bn=0, size=10)
     first = query_screener(con, query(**everything))
     assert (first.total, first.pages, len(first.rows)) == (5, 1, 5)
     assert query_screener(con, query(page=9, **everything)).page == 1
+
+
+def test_a_second_page_holds_the_next_rows_and_a_page_past_the_end_is_the_last_page():
+    con = scored_cache({f"T{n:02d}": ("2080", {}) for n in range(25)})
+    base = dict(sort="ticker", size=10, **EVERYTHING)
+    second = query_screener(con, query(page=2, **base))
+    assert (second.total, second.pages, second.page) == (25, 3, 2)
+    assert tickers(second) == [f"T{n:02d}" for n in range(10, 20)]
+    last = query_screener(con, query(page=99, **base))
+    assert last.page == 3 and tickers(last) == [f"T{n:02d}" for n in range(20, 25)]
 
 
 def test_reweighting_changes_the_score_without_recomputing_bands():

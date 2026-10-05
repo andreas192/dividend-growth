@@ -87,6 +87,23 @@ def test_to_json_is_plain_data():
                               "series": [{"name": "S", "values": [0.1, None], "slot": 2}], "note": "n", "references": [{"name": "r", "value": 1.0}]}
 
 
+def test_to_json_maps_non_finite_values_to_null():
+    spec = ChartSpec("x", "T", "line", "pct", [1, 2, 3], [ChartSeries("S", [float("nan"), float("inf"), -float("inf")], 1)])
+    assert spec.to_json()["series"][0]["values"] == [None, None, None]
+
+
+def test_a_chart_whose_only_values_are_non_finite_counts_as_empty():
+    rows = [{"fiscal_year": 2025, **{k: None for k in ("fcf_per_share", "shares_diluted", "operating_income", "interest_expense", "net_debt", "ebitda", "payout_earnings", "payout_fcf")}, "eps_diluted": float("nan")}]
+    assert "per_share" not in by_id(fundamentals_charts(annual(fundamentals=rows)))
+
+
+def test_the_per_share_dividend_comes_from_complete_years_only():
+    dividends = [{"year": y, "dps": 1.0, "n_payments": 4, "special_total": 0.0, "complete": y < 2025} for y in range(2020, 2026)]
+    fundamentals = annual()  # fundamentals for 2021-2025; 2025 has a dividends row that is incomplete
+    chart = by_id(fundamentals_charts(AnnualData(dividends, fundamentals.fundamentals, {})))["per_share"]
+    assert chart.series[2].values == [1.0, 1.0, 1.0, 1.0, None]
+
+
 # daily -----------------------------------------------------------------------------------------------------------------
 
 PAYMENTS = [(D(2023, 3, 1), 0.25), (D(2023, 6, 1), 0.25), (D(2023, 9, 1), 0.25), (D(2023, 12, 1), 0.25), (D(2024, 3, 1), 0.30)]
@@ -99,6 +116,11 @@ def test_trailing_yield_sums_the_previous_365_days_and_waits_a_year_for_the_firs
     assert values[1] == pytest.approx((0.25 * 3 + 0.30) / 50.0)  # 2023-06, 09, 12 and 2024-03 (2023-03-01 is just outside the window)
     assert values[2] is None                                    # a year on, the last payment has left the window
     assert values[3] is None                                    # zero price
+
+
+def test_trailing_yield_skips_a_non_finite_close():
+    points = [(D(2024, 3, 2), float("nan")), (D(2024, 3, 3), float("inf")), (D(2024, 3, 4), 50.0)]
+    assert trailing_yield(points, PAYMENTS) == [None, None, pytest.approx((0.25 * 3 + 0.30) / 50.0)]
 
 
 def test_trailing_yield_with_no_payments_is_all_none():

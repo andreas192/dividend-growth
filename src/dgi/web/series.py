@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 from bisect import bisect_right
 from collections import OrderedDict
@@ -40,13 +41,18 @@ class ChartSpec:
     def to_json(self) -> dict[str, Any]:
         return {
             "id": self.id, "title": self.title, "kind": self.kind, "unit": self.unit, "x": self.x, "xType": self.x_type,
-            "series": [{"name": s.name, "values": s.values, "slot": s.slot} for s in self.series],
+            "series": [{"name": s.name, "values": [_finite(v) for v in s.values], "slot": s.slot} for s in self.series],
             "note": self.note, "references": self.references,
         }
 
 
+def _finite(value: float | None) -> float | None:
+    """JSON has no NaN or infinity: they become null."""
+    return value if value is not None and math.isfinite(value) else None
+
+
 def _present(values: Sequence[float | None]) -> bool:
-    return any(v is not None for v in values)
+    return any(_finite(v) is not None for v in values)
 
 
 def _years(rows: Sequence[Mapping[str, Any]], key: str) -> list[int]:
@@ -108,7 +114,7 @@ def fundamentals_charts(data: AnnualData) -> list[ChartSpec]:
         note = "Cash dividends paid over net income and over free cash flow. Values above 200% are drawn at 200%." if clamped else \
             "Cash dividends paid over net income and over free cash flow."
         charts.append(ChartSpec("payout", "Payout ratios", "line", "pct", years, payout_series, note=note, references=[{"name": "100%", "value": 1.0}]))
-    dps_by_year = {r["year"]: r["dps"] for r in data.dividends}
+    dps_by_year = {r["year"]: r["dps"] for r in data.dividends if r["complete"]}
     per_share = [
         ChartSeries("EPS", [r["eps_diluted"] for r in rows], 1),
         ChartSeries("Free cash flow per share", [r["fcf_per_share"] for r in rows], 2),
@@ -179,7 +185,7 @@ def trailing_yield(points: DailyPoints, payments: Sequence[tuple[date, float]]) 
     first = dates[0] + timedelta(days=365)
     values: list[float | None] = []
     for day, close in points:
-        if close <= 0 or day < first:
+        if not (math.isfinite(close) and close > 0) or day < first:
             values.append(None)
             continue
         high, low = bisect_right(dates, day), bisect_right(dates, day - timedelta(days=365))

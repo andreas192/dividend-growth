@@ -34,7 +34,7 @@ def score_company(values: Mapping[str, float | None], cfg: ScoringConfig) -> Com
     for metric, band in cfg.bands.items():
         weight_all[band.pillar] += band.weight
         value = values.get(metric)
-        if value is not None:
+        if value is not None and value == value:  # NaN is missing too
             present[band.pillar].append((metric, value, band_score(band.points, value), band.weight))
     for pillar in PILLARS:
         weight_in = sum(w for *_, w in present[pillar])

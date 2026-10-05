@@ -145,3 +145,34 @@ def test_serve_with_an_unreadable_scoring_config_exits_1(env, gold, monkeypatch)
     monkeypatch.setattr(cli, "run_server", lambda *a: pytest.fail("the server must not start"))
     result = runner.invoke(cli.app, ["serve"], env={**env, "DGI_SCORING_CONFIG": "/nonexistent/scoring.yaml"})
     assert result.exit_code == 1 and "error:" in result.output
+
+
+def test_a_malformed_setting_exits_1_with_an_error_and_no_traceback(env):
+    result = runner.invoke(cli.app, ["status"], env={**env, "DGI_PORT": "abc"})
+    assert result.exit_code == 1 and "error:" in result.output and "DGI_PORT" in result.output and "Traceback" not in result.output
+
+
+def test_status_without_a_cache_exits_1_with_a_way_out(env):
+    result = runner.invoke(cli.app, ["status"], env=env)
+    assert result.exit_code == 1 and "run `dgi refresh`" in result.output
+
+
+def test_check_on_a_corrupt_cache_exits_1_with_a_way_out(env):
+    live = Path(env["DGI_DATA_DIR"]) / "dgi.duckdb"
+    live.parent.mkdir(parents=True)
+    live.write_bytes(b"this is not a duckdb file" * 100)
+    result = runner.invoke(cli.app, ["check"], env=env)
+    assert result.exit_code == 1 and "error:" in result.output and "dgi refresh" in result.output and "Traceback" not in result.output
+
+
+def test_a_failed_candidate_check_leaves_the_live_cache_untouched(env, gold, monkeypatch):
+    from dgi import pipeline
+    from dgi.cache.checks import CheckResult
+
+    runner.invoke(cli.app, ["refresh"], env=env)
+    before = sha(env)
+    monkeypatch.setattr(pipeline, "verify_cache", lambda candidate, live: [CheckResult("row_counts", False, "collapsed")])
+    result = runner.invoke(cli.app, ["refresh", "--force"], env=env)
+    assert result.exit_code == 1 and "error:" in result.output and "row_counts: collapsed" in result.output
+    assert sha(env) == before
+    assert not list(Path(env["DGI_DATA_DIR"]).glob("dgi.duckdb.*"))

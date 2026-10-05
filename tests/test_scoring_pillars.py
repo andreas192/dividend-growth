@@ -51,3 +51,10 @@ def test_a_pillar_with_zero_weight_never_enters_the_total_or_the_details():
 def test_nothing_present_gives_no_total():
     r = score_company({}, CFG)
     assert r.total is None and r.coverage == 0.0 and r.details == []
+
+
+def test_a_nan_metric_is_missing_not_a_poisoned_score():
+    nan = float("nan")
+    r = score_company({"streak": 10, "dgr_5": nan, "payout_fcf": 0.5}, CFG)
+    assert r.pillars["dividend"] == 100.0 and r.pillar_coverage["dividend"] == pytest.approx(3 / 4)
+    assert r.total == r.total and all(d.metric != "dgr_5" for d in r.details)

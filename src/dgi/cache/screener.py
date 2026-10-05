@@ -166,6 +166,8 @@ def parse_query(params: Mapping[str, str], defaults: HardFilters, pillar_weights
         normalized["sector"] = sector
     if unscored:
         normalized["unscored"] = "1"
+    if size != PAGE_SIZE:
+        normalized["size"] = str(size)
     return ScreenerQuery(
         min_streak=min_streak,
         max_payout_fcf=None if payout_fcf is None else payout_fcf / 100,

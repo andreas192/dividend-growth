@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import ipaddress
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import TypeVar
+from typing import NoReturn, TypeVar
 
+import duckdb
 import typer
+from pydantic import ValidationError
 
 from dgi.cache.checks import CheckResult
 from dgi.cache.status import CacheStatus
@@ -20,16 +23,34 @@ def guard(fn: Callable[[], T]) -> T:
     try:
         return fn()
     except DgiError as exc:
-        typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
+        _fail(str(exc), exc)
+    except duckdb.Error as exc:
+        _fail(f"cache or database error: {str(exc).splitlines()[0]}", exc)
+    except ValidationError as exc:
+        _fail(f"invalid configuration or API response: {_validation_summary(exc)}", exc)
 
 
-LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+def _validation_summary(exc: ValidationError) -> str:
+    return "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors())
+
+
+def _fail(message: str, cause: Exception) -> NoReturn:
+    typer.echo(f"error: {message}", err=True)
+    raise typer.Exit(code=1) from cause
+
+
+def is_loopback(host: str) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False  # a name other than localhost may resolve anywhere
 
 
 def exposure_warning(host: str) -> str | None:
     """The UI has no authentication: say so when it listens beyond this machine."""
-    if host in LOOPBACK:
+    if is_loopback(host):
         return None
     return f"warning: listening on {host}, not only on this machine, and the UI has no authentication"
 
