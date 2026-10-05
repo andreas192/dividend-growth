@@ -34,6 +34,12 @@ def test_a_negative_that_rounds_to_zero_prints_without_a_sign(fn, value, expecte
     assert fn(value) == expected
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+def test_non_finite_values_show_as_a_dash_everywhere(value):
+    assert [f(value) for f in (pct, num, money, big, score)] == ["–"] * 5
+    assert metric_value("dgr_5", value) == "–" and metric_value("streak", value) == "–" and metric_value("pe", value) == "–"
+
+
 def test_metric_values_follow_their_kind():
     assert metric_value("dgr_5", 0.0512) == "5.1%"
     assert metric_value("streak", 11.0) == "11"

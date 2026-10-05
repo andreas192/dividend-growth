@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 DASH = "–"
@@ -34,21 +35,26 @@ REASON_LABELS = {
 UNITS = ((1e12, "T"), (1e9, "B"), (1e6, "M"))
 
 
+def _missing(value: float | None) -> bool:
+    """None, NaN and infinity all show as a dash."""
+    return value is None or not math.isfinite(value)
+
+
 def _signed(value: float, body: str) -> str:
     """The minus sign goes first, and a negative that rounds to zero shows no sign."""
     return "-" + body if value < 0 and body.strip("0.,$%TBM") else body
 
 
 def pct(value: float | None, digits: int = 1) -> str:
-    return DASH if value is None else _signed(value, f"{abs(value) * 100:.{digits}f}%")
+    return DASH if _missing(value) else _signed(value, f"{abs(value) * 100:.{digits}f}%")
 
 
 def num(value: float | None, digits: int = 1) -> str:
-    return DASH if value is None else _signed(value, f"{abs(value):,.{digits}f}")
+    return DASH if _missing(value) else _signed(value, f"{abs(value):,.{digits}f}")
 
 
 def money(value: float | None, digits: int = 2) -> str:
-    return DASH if value is None else _signed(value, f"${abs(value):,.{digits}f}")
+    return DASH if _missing(value) else _signed(value, f"${abs(value):,.{digits}f}")
 
 
 def _big_body(magnitude: float) -> str:
@@ -62,16 +68,16 @@ def _big_body(magnitude: float) -> str:
 
 
 def big(value: float | None) -> str:
-    return DASH if value is None else _signed(value, _big_body(abs(value)))
+    return DASH if _missing(value) else _signed(value, _big_body(abs(value)))
 
 
 def score(value: float | None) -> str:
-    return DASH if value is None else f"{value:.0f}"
+    return DASH if _missing(value) else f"{value:.0f}"
 
 
 def streak_label(value: float | None, years_history: float | None) -> str:
     """The streak, with a plus when it reaches back to the start of the available dividend history (the real record may be longer)."""
-    if value is None:
+    if _missing(value):
         return DASH
     capped = value > 0 and years_history is not None and value >= years_history - 1
     return f"{value:.0f}+" if capped else f"{value:.0f}"
@@ -82,7 +88,7 @@ def metric_label(name: str) -> str:
 
 
 def metric_value(name: str, value: float | None) -> str:
-    if value is None:
+    if _missing(value):
         return DASH
     if name in PERCENT_METRICS:
         return pct(value)
