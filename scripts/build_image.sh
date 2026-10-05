@@ -12,5 +12,5 @@ trap 'rm -rf "$TMP"' EXIT
 
 podman build -t "$IMAGE" "$ROOT"
 podman save -o "$TMP/dgi.tar" "$IMAGE"
-kind load image-archive "$TMP/dgi.tar" --name "$CLUSTER"
+"$KIND" load image-archive "$TMP/dgi.tar" --name "$CLUSTER"
 echo "image $IMAGE loaded into kind cluster $CLUSTER"

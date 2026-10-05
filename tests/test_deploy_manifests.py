@@ -13,18 +13,18 @@ def load(name: str) -> dict:
     return yaml.safe_load((K8S / name).read_text())
 
 
-def containers(doc: dict) -> list[dict]:
-    spec = doc["spec"]
-    pod = spec["template"]["spec"] if doc["kind"] == "Deployment" else spec["jobTemplate"]["spec"]["template"]["spec"]
-    return pod["containers"]
-
-
 def pod_spec(doc: dict) -> dict:
     spec = doc["spec"]
     return spec["template"]["spec"] if doc["kind"] == "Deployment" else spec["jobTemplate"]["spec"]["template"]["spec"]
 
 
 WORKLOADS = ["web.yaml", "refresh.yaml"]
+MEMORY_LIMITS = {"web.yaml": "192Mi", "refresh.yaml": "832Mi"}   # peak x 1.25 rounded up to 64 MiB (docs/acceptance-local.md)
+
+
+def mebibytes(quantity: str) -> int:
+    assert quantity.endswith("Mi"), quantity
+    return int(quantity.removesuffix("Mi"))
 
 
 def test_the_base_lists_exactly_the_files_that_exist():
@@ -47,11 +47,14 @@ def test_images_are_local_never_pulled_and_run_as_a_locked_down_non_root_user(na
     doc = load(name)
     pod = pod_spec(doc)
     assert pod["securityContext"]["runAsNonRoot"] is True and pod["securityContext"]["runAsUser"] == 10001
-    for c in containers(doc):
+    assert pod["securityContext"]["seccompProfile"] == {"type": "RuntimeDefault"}
+    for c in pod["containers"]:
         assert c["image"] == "localhost/dgi" and c["imagePullPolicy"] == "Never"
         assert c["securityContext"]["readOnlyRootFilesystem"] is True and c["securityContext"]["allowPrivilegeEscalation"] is False
         assert c["securityContext"]["capabilities"]["drop"] == ["ALL"]
-        assert "memory" in c["resources"]["limits"], "memory limit comes from measurement (docs/acceptance-local.md)"
+        limit, request = c["resources"]["limits"]["memory"], c["resources"]["requests"]["memory"]
+        assert limit == MEMORY_LIMITS[name], "memory limit comes from measurement (docs/acceptance-local.md)"
+        assert 0 < mebibytes(request) < mebibytes(limit)
         env = {e["name"]: e["value"] for e in c["env"]}
         assert env["DGI_INVEST_API_URL"] == API_URL and env["DGI_DATA_DIR"] == "/data" and env["DGI_SCORING_CONFIG"] == "/config/scoring.yaml"
 
@@ -59,7 +62,7 @@ def test_images_are_local_never_pulled_and_run_as_a_locked_down_non_root_user(na
 def test_the_web_deployment_is_one_recreated_replica_reading_the_cache_read_only():
     web = load("web.yaml")
     assert web["spec"]["replicas"] == 1 and web["spec"]["strategy"]["type"] == "Recreate"
-    c = containers(web)[0]
+    c = pod_spec(web)["containers"][0]
     mounts = {m["name"]: m for m in c["volumeMounts"]}
     assert mounts["cache"]["readOnly"] is True and mounts["config"]["readOnly"] is True
     assert c["readinessProbe"]["httpGet"]["path"] == "/health" and c["livenessProbe"]["httpGet"]["path"] == "/health"
@@ -74,7 +77,7 @@ def test_the_refresh_cronjob_runs_daily_in_bucharest_time_and_never_overlaps():
     template = job["spec"]["jobTemplate"]["spec"]
     assert template["backoffLimit"] == 0 and template["activeDeadlineSeconds"] > 0
     assert template["template"]["spec"]["restartPolicy"] == "Never"
-    c = containers(job)[0]
+    c = pod_spec(job)["containers"][0]
     assert c["args"] == ["refresh"]
     assert {m["name"]: m for m in c["volumeMounts"]}["cache"].get("readOnly") is not True   # the job writes the cache
 

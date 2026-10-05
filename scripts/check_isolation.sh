@@ -14,7 +14,52 @@ BASELINE="${TMPDIR:-/tmp}/dgi-isolation-baseline.txt"
 KUBECTL="$ROOT/.tools/kubectl"
 KUBECONFIG_FILE="${DGI_KUBECONFIG:-$INV/deploy/terraform/.kube/invest.config}"
 
+# Decides once, before anything is written, whether the cluster section runs. Sets CLUSTER_SKIP (a reason, empty when the
+# cluster is inspected). Never fails open: a skip is announced on the terminal, and a kubeconfig that exists but lacks the
+# kind-invest context or whose cluster cannot be reached stops the script.
+cluster_preflight() {
+  CLUSTER_SKIP=""
+  if [ ! -x "$KUBECTL" ]; then
+    CLUSTER_SKIP="pinned kubectl missing at $KUBECTL; run scripts/install_tools.sh"
+  elif [ ! -f "$KUBECONFIG_FILE" ]; then
+    CLUSTER_SKIP="no invest kubeconfig at $KUBECONFIG_FILE"
+  fi
+  if [ -n "$CLUSTER_SKIP" ]; then
+    echo "NOTE: cluster section skipped ($CLUSTER_SKIP)" >&2
+    return
+  fi
+  "$KUBECTL" --kubeconfig "$KUBECONFIG_FILE" config get-contexts -o name 2>/dev/null | grep -qx kind-invest || {
+    echo "error: $KUBECONFIG_FILE has no context kind-invest; refusing to continue" >&2
+    exit 1
+  }
+  NAMESPACES="$("$KUBECTL" --kubeconfig "$KUBECONFIG_FILE" --context kind-invest get namespaces -o name)" || {
+    echo "error: cannot list namespaces in kind-invest (cluster down or unreachable); cannot check isolation" >&2
+    exit 1
+  }
+}
+
 cluster_snapshot() {
+  # explicit kubeconfig and context, as in scripts/lib.sh
+  [ -z "$CLUSTER_SKIP" ] || { echo "(no invest cluster to inspect)"; return; }
+  kc() { "$KUBECTL" --kubeconfig "$KUBECONFIG_FILE" --context kind-invest "$@"; }
+  echo "## invest cluster namespaces (dgi excluded)"
+  echo "$NAMESPACES" | grep -v '/dgi$' | sort
+  for ns in $(echo "$NAMESPACES" | sed 's|^namespace/||' | grep -v '^dgi$' | sort); do
+    echo "## objects in $ns"
+    out="$(kc -n "$ns" get deployments,statefulsets,daemonsets,cronjobs,services,configmaps,persistentvolumeclaims -o name)" || {
+      echo "error: cannot list objects in namespace $ns; cannot check isolation" >&2
+      exit 1
+    }
+    echo "$out" | sort
+    out="$(kc -n "$ns" get deployments -o custom-columns=NAME:.metadata.name,GENERATION:.metadata.generation --no-headers)" || {
+      echo "error: cannot list deployments in namespace $ns; cannot check isolation" >&2
+      exit 1
+    }
+    echo "$out" | sort
+  done
+}
+
+snapshot() {
   # explicit kubeconfig and context, as in scripts/lib.sh; skipped when there is no cluster to look at
   [ -x "$KUBECTL" ] && [ -f "$KUBECONFIG_FILE" ] || { echo "(no invest cluster to inspect)"; return; }
   kc() { "$KUBECTL" --kubeconfig "$KUBECONFIG_FILE" --context kind-invest "$@"; }
@@ -57,7 +102,11 @@ snapshot() {
 
 case "${1:-}" in
   baseline)
-    snapshot > "$BASELINE"
+    cluster_preflight
+    PARTIAL="$(mktemp)"
+    trap 'rm -f "$PARTIAL"' EXIT
+    snapshot > "$PARTIAL" || exit 1
+    mv "$PARTIAL" "$BASELINE"   # a failed snapshot never replaces a good baseline
     echo "Baseline saved to $BASELINE ($(wc -l < "$BASELINE" | tr -d ' ') lines)"
     ;;
   verify)
@@ -65,7 +114,9 @@ case "${1:-}" in
       echo "No baseline found. Run: scripts/check_isolation.sh baseline" >&2
       exit 2
     fi
+    cluster_preflight
     CURRENT="$(mktemp)"
+    trap 'rm -f "$CURRENT"' EXIT
     snapshot > "$CURRENT"
     if diff -u "$BASELINE" "$CURRENT"; then
       echo "OK: ../capital-trading, ../investment and the invest cluster's other namespaces are unchanged."

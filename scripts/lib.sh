@@ -2,7 +2,8 @@
 # Shared by the deploy scripts: source it, do not run it. Every kubectl call goes through `kc`, which names the
 # kubeconfig file and the kind-invest context explicitly, so the current kubectl context (or a GKE one) is never used.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-export PATH="$ROOT/.tools:$PATH"
+KUBECTL="$ROOT/.tools/kubectl"   # the pinned binaries only; a system kubectl or kind is never used
+KIND="$ROOT/.tools/kind"
 export KIND_EXPERIMENTAL_PROVIDER=podman
 CLUSTER="invest"
 CONTEXT="kind-$CLUSTER"
@@ -15,21 +16,21 @@ need() {
 }
 
 kc() {
-  kubectl --kubeconfig "$KUBECONFIG_FILE" --context "$CONTEXT" "$@"
+  "$KUBECTL" --kubeconfig "$KUBECONFIG_FILE" --context "$CONTEXT" "$@"
 }
 
 require_cluster() {
-  need kubectl
-  need kind
+  [ -x "$KUBECTL" ] || { echo "error: pinned kubectl missing at $KUBECTL; run scripts/install_tools.sh" >&2; exit 1; }
+  [ -x "$KIND" ] || { echo "error: pinned kind missing at $KIND; run scripts/install_tools.sh" >&2; exit 1; }
   [ -f "$KUBECONFIG_FILE" ] || {
     echo "error: no kubeconfig at $KUBECONFIG_FILE (does investment's cluster exist? set DGI_KUBECONFIG)" >&2
     exit 1
   }
-  kubectl --kubeconfig "$KUBECONFIG_FILE" config get-contexts -o name | grep -qx "$CONTEXT" || {
+  "$KUBECTL" --kubeconfig "$KUBECONFIG_FILE" config get-contexts -o name | grep -qx "$CONTEXT" || {
     echo "error: $KUBECONFIG_FILE has no context $CONTEXT; refusing to continue" >&2
     exit 1
   }
-  kind get clusters 2>/dev/null | grep -qx "$CLUSTER" || {
+  "$KIND" get clusters 2>/dev/null | grep -qx "$CLUSTER" || {
     echo "error: the kind cluster $CLUSTER does not exist" >&2
     exit 1
   }

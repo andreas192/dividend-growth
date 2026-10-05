@@ -10,7 +10,7 @@ resources:
 configMapGenerator:
   - name: scoring
     files:
-      - scoring.yaml   # deploy.sh copies config/scoring.yaml here; a change rolls the pods and needs no image rebuild
+      - scoring.yaml   # deploy.sh copies config/scoring.yaml here; it overrides the copy baked into the image, so the hashed name rolls the pods on a change
 images:
   - name: localhost/dgi
     newTag: __IMAGE_TAG__   # deploy.sh substitutes the content-hash tag
