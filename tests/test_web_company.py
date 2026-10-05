@@ -9,8 +9,8 @@ from dgi.cache.build import new_path, swap_in
 from dgi.errors import ApiUnavailable
 from dgi.settings import Settings
 from dgi.web.app import create_app
-from tests.cache_fixtures import CFG, cache_with, make_meta, persist
-from tests.web_fixtures import D, add_history, sample_cache
+from tests.cache_fixtures import CFG, cache_with, make_meta, persist, scored_cache
+from tests.web_fixtures import COMPANIES, D, add_history, sample_cache
 
 DAILY = [(D(2025, 1, 1) + dt.timedelta(days=i), 50.0 + i * 0.01) for i in range(400)]
 
@@ -116,12 +116,34 @@ def test_large_responses_are_compressed(tmp_path):
 
 def test_when_the_api_is_down_the_endpoint_says_so_and_the_page_keeps_working(tmp_path):
     sample_cache(tmp_path / "dgi.duckdb")
-    with app_for(tmp_path, StubSource(ApiUnavailable("cannot reach the investment API"))) as client:
+    with app_for(tmp_path, StubSource(ApiUnavailable("cannot reach http://investment:8000/v1/prices"))) as client:
         body = client.get("/api/company/AAA/daily").json()
-        assert body["available"] is False and "unavailable" in body["notice"] and "annual figures" in body["notice"]
+        assert body["available"] is False
+        assert body["notice"] == "Daily prices are unavailable right now; showing annual data only."
+        assert "investment" not in body["notice"] and "http" not in body["notice"]
         assert client.get("/company/AAA").status_code == 200
 
 
 def test_without_a_price_source_the_endpoint_falls_back(web):
     body = web.get("/api/company/AAA/daily").json()
     assert body["available"] is False and "annual" in body["notice"]
+
+
+RATIO_TEXT = ("Payout of earnings", "Payout of free cash flow", "Valuation", "P/E", "Price / free cash flow", "Free cash flow yield",
+              "Fair value per share by required return")
+RATIO_CHARTS = {"payout", "leverage", "coverage"}
+
+
+def test_a_bank_hides_payout_valuation_and_coverage_but_keeps_dividend_history(tmp_path):
+    con = scored_cache(COMPANIES)      # BANK has real-looking ratios in metrics_current (the GOOD row) but is not scored
+    for ticker in ("AAA", "BANK", "NEWC"):
+        add_history(con, ticker)
+    persist(con, tmp_path / "dgi.duckdb")
+    with app_for(tmp_path) as client:
+        bank, scored, short = (client.get(f"/company/{t}").text for t in ("BANK", "AAA", "NEWC"))
+    assert "Bank, insurer or REIT" in bank and "Dividend yield" in bank and "Years of increases" in bank
+    assert not any(t in bank for t in RATIO_TEXT)
+    ids = {c["id"] for c in embedded_charts(bank)}
+    assert {"dps", "yield", "dps_growth", "per_share", "shares"} <= ids and not ids & RATIO_CHARTS
+    assert all(t in scored for t in RATIO_TEXT) and RATIO_CHARTS <= {c["id"] for c in embedded_charts(scored)}
+    assert "Not scored" in short and "Payout of free cash flow" in short and RATIO_CHARTS <= {c["id"] for c in embedded_charts(short)}

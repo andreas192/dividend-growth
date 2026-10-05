@@ -32,7 +32,8 @@ from dgi.web import format as fmt
 from dgi.web.series import PriceSource, SeriesCache, annual_charts, daily_charts
 
 HERE = Path(__file__).parent
-TICKER = re.compile(r"^[A-Za-z0-9.\-]{1,10}$")
+TICKER = re.compile(r"[A-Za-z0-9.\-]{1,10}")
+RATIO_CHARTS = {"payout", "leverage", "coverage"}  # not shown for banks, insurers and REITs: those ratios do not describe them
 CSV_COLUMNS = [
     "rank", "ticker", "name", "sector", "price", "yield_pct", "streak", "dgr_5_pct", "payout_fcf_pct", "payout_eps_pct", "market_cap",
     "dividend_score", "safety_score", "growth_score", "valuation_score", "score", "margin_of_safety_pct", "red_flags",
@@ -85,12 +86,14 @@ def screener(request: Request) -> Response:
             return no_cache(request)
         q = parse_query(request.query_params, state.cfg.hard_filters, state.cfg.pillars)
         stats = universe_stats(con, q)
-        page, unscored, unscored_total = None, [], 0
+        page, unscored, unscored_total, unscored_pages = None, [], 0, 1
         if q.show_unscored:
             unscored, unscored_total = query_unscored(con, q)
+            unscored_pages = max(1, -(-unscored_total // q.size))
         else:
             page = query_screener(con, q)
         context = {"q": q, "stats": stats, "page": page, "unscored": unscored, "unscored_total": unscored_total,
+                   "unscored_page": min(q.page, unscored_pages), "unscored_pages": unscored_pages,
                    "sectors": sector_groups(con), "footer": footer(read_meta_from(con))}
     return render(request, "screener.html", context)
 
@@ -126,7 +129,7 @@ def scatter(request: Request) -> Response:
 
 def _ticker(request: Request) -> str:
     ticker = request.path_params["ticker"]
-    if not TICKER.match(ticker):
+    if not TICKER.fullmatch(ticker):
         raise HTTPException(404)
     return ticker
 
@@ -151,8 +154,10 @@ def company(request: Request) -> Response:
             raise HTTPException(404)
         annual = load_annual(con, view.ticker)
         meta = read_meta_from(con)
-    charts = annual_charts(annual, view.metrics.get("div_yield_avg_5y"))
-    context = {"c": view, "charts": [c.to_json() for c in charts], "valuation": valuation_panel(view, state.cfg), "footer": footer(meta)}
+    show_ratios = view.reason != "financial_or_reit"
+    charts = [c for c in annual_charts(annual, view.metrics.get("div_yield_avg_5y")) if show_ratios or c.id not in RATIO_CHARTS]
+    context = {"c": view, "charts": [c.to_json() for c in charts], "show_ratios": show_ratios,
+               "valuation": valuation_panel(view, state.cfg) if show_ratios else None, "footer": footer(meta)}
     return render(request, "company.html", context)
 
 
@@ -172,8 +177,8 @@ def daily(request: Request) -> Response:
         return JSONResponse({"available": False, "notice": "Daily prices are not configured; showing annual figures."})
     try:
         points = state.series_cache.get_or_load(meta.upstream_key if meta else "", view.ticker, lambda: state.price_source.daily(view.ticker))
-    except DgiError as exc:
-        return JSONResponse({"available": False, "notice": f"Daily prices are unavailable ({exc}); showing annual figures."})
+    except DgiError:
+        return JSONResponse({"available": False, "notice": "Daily prices are unavailable right now; showing annual data only."})
     return JSONResponse({"available": True, "charts": [c.to_json() for c in daily_charts(points, payments, average)]})
 
 

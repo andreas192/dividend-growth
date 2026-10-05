@@ -111,3 +111,32 @@ def test_scatter_api_returns_percent_points_for_the_filtered_set(web):
     assert set(points) == {"AAA", "BBB"}
     assert points["AAA"]["yield"] == 2.5 and points["AAA"]["dgr5"] == 7.0 and points["AAA"]["score"] > 0
     assert set(web.get("/api/scatter?min_streak=0&max_payout_fcf=&min_cap_bn=0").json()["points"][0]) == {"ticker", "name", "yield", "dgr5", "score"}
+
+
+def many(n, prefix, overrides):
+    return {f"{prefix}{i:02d}": ("2080", dict(overrides, market_cap=5e9)) for i in range(n)}
+
+
+def links(html: str) -> list[str]:
+    return re.findall(r'<td><a href="/company/([A-Z0-9.\-]+)">', html)
+
+
+def test_the_ranked_table_pages_with_a_next_link_when_there_are_more_rows_than_the_page_size(tmp_path):
+    persist(scored_cache(many(12, "R", {"streak": 20})), tmp_path / "dgi.duckdb")
+    with TestClient(create_app(Settings(data_dir=tmp_path), CFG)) as client:
+        first = client.get("/?size=10").text
+        second = client.get("/?size=10&page=2").text
+    assert len(links(first)) == 10 and "Page 1 of 2" in first and "page=2" in first and "Next" in first and "Previous" not in first
+    assert len(links(second)) == 2 and "Page 2 of 2" in second and "Previous" in second and "Next" not in second
+
+
+def test_the_not_scored_list_is_paged_and_a_page_past_the_end_clamps(tmp_path):
+    persist(scored_cache(many(12, "N", {"years_history": 3})), tmp_path / "dgi.duckdb")
+    with TestClient(create_app(Settings(data_dir=tmp_path), CFG)) as client:
+        first = client.get("/?unscored=1&size=10").text
+        second = client.get("/?unscored=1&size=10&page=2").text
+        past = client.get("/?unscored=1&size=10&page=9").text
+    assert "Not scored (12)" in first and len(links(first)) == 10
+    assert "Page 1 of 2" in first and "Next" in first and "unscored=1" in first and "page=2" in first
+    assert len(links(second)) == 2 and "Page 2 of 2" in second and "Previous" in second
+    assert len(links(past)) == 2 and "Page 2 of 2" in past

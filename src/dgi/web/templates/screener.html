@@ -6,6 +6,15 @@
     <a href="/?{{ qs(q.params, sort=key, dir=flip, page=1) }}">{{ label }}{% if q.sort == key %} {{ '▼' if q.descending else '▲' }}{% endif %}</a>
   </th>
 {%- endmacro %}
+{% macro pager(page, pages) -%}
+  {% if pages > 1 %}
+    <nav class="pager" aria-label="Pages">
+      {% if page > 1 %}<a href="/?{{ qs(q.params, page=page - 1) }}">Previous</a>{% endif %}
+      <span>Page {{ page }} of {{ pages }}</span>
+      {% if page < pages %}<a href="/?{{ qs(q.params, page=page + 1) }}">Next</a>{% endif %}
+    </nav>
+  {% endif %}
+{%- endmacro %}
 {% block content %}
 <h1>Dividend growth screener</h1>
 <section class="strip" aria-label="Universe">
@@ -56,6 +65,7 @@
     {% else %}<tr><td colspan="4">Nothing here.</td></tr>{% endfor %}
     </tbody>
   </table></div>
+  {{ pager(unscored_page, unscored_pages) }}
 {% else %}
   <section aria-labelledby="scatter-h">
     <h2 id="scatter-h">Yield against 5-year dividend growth</h2>
@@ -86,13 +96,7 @@
     </tbody>
   </table></div>
   <p class="note">A plus after a streak means the record reaches back to the start of the available dividend history, so the real streak may be longer.</p>
-  {% if page.pages > 1 %}
-    <nav class="pager" aria-label="Pages">
-      {% if page.page > 1 %}<a href="/?{{ qs(q.params, page=page.page - 1) }}">Previous</a>{% endif %}
-      <span>Page {{ page.page }} of {{ page.pages }}</span>
-      {% if page.page < page.pages %}<a href="/?{{ qs(q.params, page=page.page + 1) }}">Next</a>{% endif %}
-    </nav>
-  {% endif %}
+  {{ pager(page.page, page.pages) }}
 {% endif %}
 {% endblock %}
 {% block scripts %}<script>window.dgiInitScatter && window.dgiInitScatter();</script>{% endblock %}

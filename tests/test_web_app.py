@@ -72,3 +72,8 @@ def test_a_cache_swapped_under_the_running_app_is_served_without_a_restart(tmp_p
         assert client.get("/health").json()["counts"]["company_dim"] == 1
         swap_in(persist(cache_with({"A": ("2080", {}), "B": ("2080", {}), "C": ("2080", {})}), new_path(live)), live)
         assert client.get("/health").json()["counts"]["company_dim"] == 3
+
+
+def test_a_ticker_with_a_trailing_newline_is_rejected_by_the_pattern_itself(web):
+    assert web.get("/company/AAA%0A").status_code == 404
+    assert web.get("/api/company/AAA%0A/daily").status_code == 404

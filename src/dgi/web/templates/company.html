@@ -46,8 +46,10 @@
   <div class="tile"><span class="label">Dividend yield</span><span class="value">{{ m.div_yield|pct }}</span></div>
   <div class="tile"><span class="label">5-year dividend growth</span><span class="value">{{ m.dgr_5|pct }}</span></div>
   <div class="tile"><span class="label">Years of increases</span><span class="value">{{ m.streak|streak_label(m.years_history) }}</span></div>
+  {% if show_ratios %}
   <div class="tile"><span class="label">Payout of earnings</span><span class="value">{{ m.payout_earnings|pct(0) }}</span></div>
   <div class="tile"><span class="label">Payout of free cash flow</span><span class="value">{{ m.payout_fcf|pct(0) }}</span></div>
+  {% endif %}
   {% if s.fair_value_mid is not none %}
   <div class="tile"><span class="label">Fair value (range)</span>
     <span class="value">{{ s.fair_value_mid|money(0) }}</span>
