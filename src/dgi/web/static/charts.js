@@ -155,8 +155,8 @@
         chart.setOption({
           animation: false, textStyle: { color: t.ink2 },
           grid: { left: 56, right: 24, top: 16, bottom: 44 },
-          xAxis: { name: "Dividend yield (%)", nameLocation: "middle", nameGap: 28, type: "value", scale: true, axisLabel: { color: t.muted }, axisLine: { lineStyle: { color: t.axis } }, splitLine: { lineStyle: { color: t.grid } } },
-          yAxis: { name: "5-year dividend growth (%)", nameLocation: "middle", nameGap: 40, type: "value", scale: true, axisLabel: { color: t.muted }, splitLine: { lineStyle: { color: t.grid } } },
+          xAxis: { name: "Dividend yield (%)", nameLocation: "middle", nameGap: 28, type: "value", scale: true, boundaryGap: ["4%", "4%"], axisLabel: { color: t.muted }, axisLine: { lineStyle: { color: t.axis } }, splitLine: { lineStyle: { color: t.grid } } },
+          yAxis: { name: "5-year dividend growth (%)", nameLocation: "middle", nameGap: 40, type: "value", scale: true, boundaryGap: ["4%", "4%"], axisLabel: { color: t.muted }, splitLine: { lineStyle: { color: t.grid } } },
           tooltip: { trigger: "item", confine: true, backgroundColor: t.surface, borderColor: t.grid, textStyle: { color: t.ink },
             formatter: function (p) { var d = p.data; return "<strong>" + esc(d.ticker) + "</strong> " + esc(d.name) + "<br>Yield " + d.value[0].toFixed(1) + "% · 5y growth " + d.value[1].toFixed(1) + "%<br>Score " + (d.score === null ? "–" : d.score.toFixed(0)); } },
           series: [{ type: "scatter", itemStyle: { color: t.series[0], opacity: 0.8, borderColor: t.surface, borderWidth: 2 },
