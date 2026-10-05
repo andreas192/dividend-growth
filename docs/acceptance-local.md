@@ -15,7 +15,7 @@ API: `invest serve` on 127.0.0.1:8750, gold built 2026-10-05T16:54:24.390595+00:
 
 ## Web (`dgi serve`)
 
-- RSS idle: 86.8 MiB; after browsing screener, two company pages, daily series, CSV: 132.2 MiB (122.2 MiB after the two headless Chrome screenshots that followed)
+- RSS idle: 86.8 MiB; after browsing screener, two company pages, daily series, CSV: 132.2 MiB (122.2 MiB after the two headless Chrome screenshots that followed). These are RSS samples, not a measured maximum. The in-memory daily-series cache grows about 0.9 MB per ticker visited. To measure the web server, note that `pgrep -f "dgi serve"` returns the `uv run` wrapper: pick the Python child process instead
 - Page times: screener 37 ms, filtered screener 14 ms, company 22 ms and 9 ms, scatter 6 ms, CSV 13 ms, methodology 7 ms, health 3 ms; all 200
 - Daily series, first request: 0.88 s (195.8 KB gzipped, 859.7 KB uncompressed)
 
@@ -29,5 +29,17 @@ API: `invest serve` on 127.0.0.1:8750, gold built 2026-10-05T16:54:24.390595+00:
 
 ## Kubernetes limits derived from these numbers
 
-- refresh: `limit = ceil(634.2 x 1.25 / 64) x 64 = 832 Mi`
-- web: `limit = ceil(132.2 x 1.25 / 64) x 64 = 192 Mi`
+Peak figures are macOS `ru_maxrss` of the `uv run` process tree, so 832 Mi and 192 Mi are a starting point for a Linux container, not a guarantee.
+
+- refresh: `limit = ceil(634.2 x 1.25 / 64) x 64 = 832 Mi` (634.2 MiB is the measured refresh peak)
+- web: `limit = ceil(132.2 x 1.25 / 64) x 64 = 192 Mi` (132.2 MiB is the RSS after browsing, not a peak; the daily-series cache grows about 0.9 MB per ticker visited)
+
+## In-cluster acceptance
+
+NOT run. Plan Task 25 was deferred: `../investment/deploy` does not exist and there is no `invest` kubeconfig on this machine, so nothing has been deployed or verified in a cluster. Checklist for the owner, once the cluster exists:
+
+- [ ] `DGI_INVEST_API_URL` (default `http://api.invest.svc.cluster.local:8750` in `deploy/k8s`) matches investment's actual Service name, namespace and port
+- [ ] the PVC is shared by the web Deployment and the refresh CronJob/Job (access mode and node placement allow both to mount it)
+- [ ] the CronJob runs (daily 07:00 Europe/Bucharest, or trigger with `scripts/deploy.sh --refresh`) and the cache swap succeeds
+- [ ] `scripts/open.sh` port-forwards the UI to http://127.0.0.1:8760 and the pages load
+- [ ] no OOMKill for refresh (832 Mi) or web (192 Mi); adjust the limits if the container peak differs from the macOS figures

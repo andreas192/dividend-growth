@@ -6,7 +6,7 @@ Full design: `docs/superpowers/specs/2026-10-05-dgi-screener-design.md` (not aut
 
 ## Status
 
-Implemented per the plan in `docs/superpowers/plans/` through the local acceptance (`docs/acceptance-local.md`); the Kubernetes deployment follows in Tasks 24-26. All commands (setup, app, tests, isolation, cluster, git and PRs) live in `docs/command.md`; look them up there instead of guessing, and add new ones there, not here. The upstream contract is `../investment/GOLD_SCHEMA.md` and `../investment/docs/superpowers/specs/2026-10-05-gold-http-api-design.md`; this repo records the contract it was built against and never copies those files.
+Implemented per the plan in `docs/superpowers/plans/` (`2026-10-05-dgi-screener.md` and its phase files) and accepted locally against the real API (`docs/acceptance-local.md`); the Kubernetes deployment artifacts are built and tested offline but not yet run in a cluster (plan Task 25 is pending until the `invest` cluster exists). All commands (setup, app, tests, isolation, cluster, git and PRs) live in `docs/command.md`; look them up there instead of guessing, and add new ones there, not here. The upstream contract is `../investment/GOLD_SCHEMA.md` and `../investment/docs/superpowers/specs/2026-10-05-gold-http-api-design.md`; this repo records the contract it was built against and never copies those files.
 
 ## Stack
 

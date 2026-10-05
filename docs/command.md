@@ -42,11 +42,22 @@ scripts/check_isolation.sh verify     # after; exit 1 on any difference
 - Branch from `develop`, open PRs against `develop` (`gh pr create --base develop`). `main` is the main branch.
 - Never commit anything under `data/` or `.tools/`.
 
-## Cluster (added in Tasks 24-26)
+## Cluster (namespace `dgi` in the kind cluster `invest`)
+
+The cluster belongs to `../investment`; this project owns only namespace `dgi`. Scripts use investment's kubeconfig
+(`../investment/deploy/terraform/.kube/invest.config`, override with `DGI_KUBECONFIG`) and always the `kind-invest`
+context, never the current one.
+
+The cluster path is unverified until plan Task 25 is done: the scripts and manifests are built and tested offline, but they have not been run against a live cluster.
 
 ```bash
-scripts/install_tools.sh      # pinned kubectl and kind into .tools/
-scripts/build_image.sh        # podman build, kind load
-scripts/deploy.sh             # kustomize apply into namespace dgi
-scripts/open.sh               # port-forward web to 127.0.0.1:8760
+scripts/install_tools.sh         # pinned kubectl and kind into .tools/ (checksum-verified)
+scripts/deploy.sh                # build the image, load it into kind, apply deploy/k8s
+scripts/deploy.sh --refresh      # the same, then run one refresh Job now and wait for it
+scripts/open.sh                  # port-forward the UI to http://127.0.0.1:8760
+scripts/delete.sh                # remove namespace dgi (the cache is rebuildable)
+scripts/image_tag.sh             # the content-hash tag of the current tree
+scripts/check_isolation.sh verify
 ```
+
+Settings (env) also include `DGI_PAGE_LIMIT` (rows per API page, default 100000).

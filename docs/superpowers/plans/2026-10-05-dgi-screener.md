@@ -1,6 +1,6 @@
 # DGI Screener Implementation Plan
 
-**Status:** ready for owner review (not started)
+**Status:** tasks 1-24 and 26 implemented; Task 25 (in-cluster deploy and acceptance) pending until the `invest` cluster exists
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. The plan is split into one file per phase (see "Task map"); read this index, then only the phase file that holds your task.
 
