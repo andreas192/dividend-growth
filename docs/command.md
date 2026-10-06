@@ -22,7 +22,7 @@ uv run dgi serve                            # web UI on 127.0.0.1:8760
 
 A scoring-only edit of `config/scoring.yaml` needs no new pull but still needs `dgi refresh` (it asks the API's `/health` first so new upstream data is not skipped; if the API is unreachable it rescores from the cache and prints a warning) and a restart of `dgi serve` (the app loads the file once; the footer warns when the stored scores came from a different file).
 
-Settings (env): `DGI_INVEST_API_URL` (default `http://127.0.0.1:8750`), `DGI_DATA_DIR` (default `data`), `DGI_SCORING_CONFIG` (default `config/scoring.yaml`), `DGI_HOST`, `DGI_PORT`.
+Settings (env): `DGI_INVEST_API_URL` (default `http://127.0.0.1:8750`), `DGI_DATA_DIR` (default `data`), `DGI_SCORING_CONFIG` (default `config/scoring.yaml`), `DGI_HOST`, `DGI_PORT`, `DGI_PAGE_LIMIT` (rows per API page, default 100000).
 
 ## Tests
 
@@ -61,5 +61,3 @@ scripts/delete.sh                # remove namespace dgi (the cache is rebuildabl
 scripts/image_tag.sh             # the content-hash tag of the current tree
 scripts/check_isolation.sh verify
 ```
-
-Settings (env) also include `DGI_PAGE_LIMIT` (rows per API page, default 100000).

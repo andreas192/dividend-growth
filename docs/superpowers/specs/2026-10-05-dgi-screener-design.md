@@ -60,16 +60,16 @@ Layout:
 ```
 config/scoring.yaml            pillar weights, metric bands, hard-filter defaults, tolerances
 src/dgi/cli.py, pipeline.py    wiring only (no unit spec)
-src/dgi/settings.py, report.py, fsutil.py
+src/dgi/errors.py, settings.py, report.py, results.py, fsutil.py
 src/dgi/schema.py              shared table definitions
 src/dgi/client/                the only HTTP code: paging, Arrow, dependency check
-src/dgi/metrics/               SQL (DuckDB): dividend_annual, fundamentals_annual, metrics_current, flags
+src/dgi/metrics/               {params,sqlrun,dividends}.py and sql/*.sql (DuckDB): dividend_annual, fundamentals_annual, metrics_current
 src/dgi/scoring/               config model, bands, pillars, coverage, hard filters
 src/dgi/cache/                 {meta,build,checks,handle,screener,company,status}.py: schema use, atomic swap, meta, quality checks, read-only queries
 src/dgi/web/                   {app,series,format}.py, routes, templates, static (vendored ECharts), JSON series endpoints
 tests/                         offline, fixtures built in code
 deploy/k8s/                    kustomize base: namespace, PVC, configMapGenerator, web, refresh
-scripts/                       install_tools.sh, build_image.sh, deploy.sh, open.sh, check_isolation.sh
+scripts/                       install_tools.sh, vendor_echarts.sh, image_tag.sh, build_image.sh, deploy.sh, delete.sh, open.sh, lib.sh, check_isolation.sh
 docs/                          code-conventions.md, token-strategy.md, rate-limits.md, specs, plans
 ```
 
