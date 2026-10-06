@@ -1,0 +1,178 @@
+"""PIPELINE layer: the commands, the stages and the cache wired together over a fake investment API."""
+
+import datetime as dt
+import hashlib
+import shutil
+from pathlib import Path
+
+import duckdb
+import pytest
+from starlette.testclient import TestClient
+from typer.testing import CliRunner
+
+from dgi import cli
+from dgi.cache.meta import read_meta
+from tests.fake_api import FakeGold
+from tests.sample_gold import build_sample_gold
+
+runner = CliRunner()
+REPO = Path(__file__).resolve().parent.parent
+
+
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    scoring = tmp_path / "scoring.yaml"
+    shutil.copy(REPO / "config" / "scoring.yaml", scoring)
+    monkeypatch.setattr(cli, "current_date", lambda: dt.date(2026, 10, 5))
+    monkeypatch.setattr(cli, "current_time", lambda: dt.datetime(2026, 10, 5, 7, 0, tzinfo=dt.timezone.utc))
+    return {"DGI_DATA_DIR": str(tmp_path / "data"), "DGI_SCORING_CONFIG": str(scoring), "DGI_INVEST_API_URL": "http://api.test"}
+
+
+@pytest.fixture
+def gold(monkeypatch):
+    fake = FakeGold(build_sample_gold())
+    monkeypatch.setattr(cli, "make_client", lambda settings: fake.client(page_limit=500))
+    return fake
+
+
+def cache(env):
+    return duckdb.connect(str(Path(env["DGI_DATA_DIR"]) / "dgi.duckdb"), read_only=True)
+
+
+def sha(env) -> str:
+    return hashlib.sha256((Path(env["DGI_DATA_DIR"]) / "dgi.duckdb").read_bytes()).hexdigest()
+
+
+def test_the_commands_are_registered():
+    result = runner.invoke(cli.app, ["--help"])
+    assert result.exit_code == 0
+    for command in ("refresh", "status", "check", "serve"):
+        assert command in result.output
+
+
+def test_refresh_builds_a_cache_and_one_value_traces_from_the_api_to_the_score(env, gold):
+    result = runner.invoke(cli.app, ["refresh"], env=env)
+    assert result.exit_code == 0, result.output
+    assert "rebuilt: no usable cache" in result.output and "checks: 6 of 6 passed" in result.output
+    con = cache(env)
+    streak, status, price, basis = con.execute(
+        "SELECT m.streak, s.status, m.price, m.basis FROM metrics_current m JOIN scores s USING (ticker) WHERE ticker = 'ACME'"
+    ).fetchone()
+    assert (streak, status, price, basis) == (11, "scored", 60.0, "ttm")
+    assert con.execute("SELECT ticker, status, reason FROM scores ORDER BY ticker").fetchall() == [
+        ("ACME", "scored", None),
+        ("BANKY", "not_scored", "financial_or_reit"),
+        ("NEWCO", "not_scored", "short_dividend_history"),
+        ("NOPAY", "not_scored", "short_dividend_history"),
+    ]
+    assert con.execute("SELECT upstream_key FROM meta").fetchone() == ("hash-1|2026-10-04T06:00:00+00:00",)
+    assert not list(Path(env["DGI_DATA_DIR"]).glob("dgi.duckdb.*"))
+
+
+def test_a_second_refresh_on_unchanged_upstream_does_nothing(env, gold):
+    runner.invoke(cli.app, ["refresh"], env=env)
+    before, requests = sha(env), len(gold.requests)
+    result = runner.invoke(cli.app, ["refresh"], env=env)
+    assert result.exit_code == 0 and "up to date" in result.output
+    assert sha(env) == before
+    assert all("/v1/" not in r for r in gold.requests[requests:])  # only /health and /contracts were asked
+
+
+def test_new_upstream_data_rebuilds_and_a_scoring_edit_rescores_without_the_api(env, gold):
+    runner.invoke(cli.app, ["refresh"], env=env)
+    gold.built_at = "2026-10-05T06:00:00+00:00"
+    assert "rebuilt: upstream data changed" in runner.invoke(cli.app, ["refresh"], env=env).output
+    scoring = Path(env["DGI_SCORING_CONFIG"])
+    scoring.write_text(scoring.read_text().replace("min_streak: 5", "min_streak: 7"))
+    requests = len(gold.requests)
+    result = runner.invoke(cli.app, ["refresh"], env=env)
+    assert "rescored: scoring config changed" in result.output
+    assert all("/v1/" not in r for r in gold.requests[requests:])
+    assert read_meta(Path(env["DGI_DATA_DIR"]) / "dgi.duckdb").upstream_key == "hash-1|2026-10-05T06:00:00+00:00"
+
+
+def test_refresh_force_rebuilds_even_when_nothing_changed(env, gold):
+    runner.invoke(cli.app, ["refresh"], env=env)
+    assert "rebuilt: forced" in runner.invoke(cli.app, ["refresh", "--force"], env=env).output
+
+
+def test_refresh_with_the_api_down_exits_1_and_keeps_the_old_cache(env, gold):
+    runner.invoke(cli.app, ["refresh"], env=env)
+    before = sha(env)
+    gold.down = True
+    result = runner.invoke(cli.app, ["refresh", "--force"], env=env)
+    assert result.exit_code == 1 and "error:" in result.output
+    assert sha(env) == before
+
+
+def test_status_and_check_read_the_live_cache(env, gold):
+    runner.invoke(cli.app, ["refresh"], env=env)
+    status = runner.invoke(cli.app, ["status"], env=env)
+    assert status.exit_code == 0 and "companies: 4, scored: 1" in status.output and "financial_or_reit=1" in status.output
+    check = runner.invoke(cli.app, ["check"], env=env)
+    assert check.exit_code == 0 and "FAIL" not in check.output
+    # a 4-company sample scores 25%: inside the plausible range of the scored-share check
+
+
+def test_check_without_a_cache_exits_1_with_a_way_out(env):
+    result = runner.invoke(cli.app, ["check"], env=env)
+    assert result.exit_code == 1 and "run `dgi refresh`" in result.output
+
+
+def test_serve_builds_the_app_over_the_cache_and_one_value_traces_through_the_web_pages(env, gold, monkeypatch):
+    runner.invoke(cli.app, ["refresh"], env=env)
+    seen = {}
+
+    def fake_server(web_app, host, port):  # runs while `serve` still holds the API client, as uvicorn would
+        seen.update(host=host, port=port)
+        with TestClient(web_app) as client:
+            page = client.get("/company/ACME").text
+            seen["page"] = page
+            seen["list"] = client.get("/").text
+            seen["health"] = client.get("/health").json()
+            seen["daily"] = client.get("/api/company/ACME/daily").json()
+
+    monkeypatch.setattr(cli, "run_server", fake_server)
+    result = runner.invoke(cli.app, ["serve", "--port", "9001"], env=env)
+    assert result.exit_code == 0, result.output
+    assert (seen["host"], seen["port"]) == ("127.0.0.1", 9001)
+    assert "Acme Beverages" in seen["page"] and "$60.00" in seen["page"] and "DGI score" in seen["page"]   # price 60.0 came from the API
+    assert "ACME" in seen["list"] and seen["health"]["scored"] == 1
+    assert seen["daily"]["available"] is True and seen["daily"]["charts"][0]["id"] == "price"             # one ticker pulled on demand
+
+
+def test_serve_with_an_unreadable_scoring_config_exits_1(env, gold, monkeypatch):
+    monkeypatch.setattr(cli, "run_server", lambda *a: pytest.fail("the server must not start"))
+    result = runner.invoke(cli.app, ["serve"], env={**env, "DGI_SCORING_CONFIG": "/nonexistent/scoring.yaml"})
+    assert result.exit_code == 1 and "error:" in result.output
+
+
+def test_a_malformed_setting_exits_1_with_an_error_and_no_traceback(env):
+    result = runner.invoke(cli.app, ["status"], env={**env, "DGI_PORT": "abc"})
+    assert result.exit_code == 1 and "error:" in result.output and "DGI_PORT" in result.output and "Traceback" not in result.output
+
+
+def test_status_without_a_cache_exits_1_with_a_way_out(env):
+    result = runner.invoke(cli.app, ["status"], env=env)
+    assert result.exit_code == 1 and "run `dgi refresh`" in result.output
+
+
+def test_check_on_a_corrupt_cache_exits_1_with_a_way_out(env):
+    live = Path(env["DGI_DATA_DIR"]) / "dgi.duckdb"
+    live.parent.mkdir(parents=True)
+    live.write_bytes(b"this is not a duckdb file" * 100)
+    result = runner.invoke(cli.app, ["check"], env=env)
+    assert result.exit_code == 1 and "error:" in result.output and "dgi refresh" in result.output and "Traceback" not in result.output
+
+
+def test_a_failed_candidate_check_leaves_the_live_cache_untouched(env, gold, monkeypatch):
+    from dgi import pipeline
+    from dgi.cache.checks import CheckResult
+
+    runner.invoke(cli.app, ["refresh"], env=env)
+    before = sha(env)
+    monkeypatch.setattr(pipeline, "verify_cache", lambda candidate, live: [CheckResult("row_counts", False, "collapsed")])
+    result = runner.invoke(cli.app, ["refresh", "--force"], env=env)
+    assert result.exit_code == 1 and "error:" in result.output and "row_counts: collapsed" in result.output
+    assert sha(env) == before
+    assert not list(Path(env["DGI_DATA_DIR"]).glob("dgi.duckdb.*"))

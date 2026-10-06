@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}DGI Screener{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script>try { var t = localStorage.getItem("dgi-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/">DGI Screener</a>
+    <nav aria-label="Main">
+      <a href="/">Screener</a>
+      <a href="/methodology">Methodology</a>
+      <a href="/health">Health</a>
+    </nav>
+    <button id="theme-toggle" type="button" aria-label="Switch between light and dark">Theme</button>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  <footer>
+    {% if footer %}Cache built {{ footer.built_at }} UTC · data from {{ footer.upstream_built_at }} · contract {{ footer.contract_version }}
+      {% if footer.contract_warnings %}· <span class="warning">▲ {{ footer.contract_warnings }}</span>{% endif %}
+      {% if footer.scoring_drift %}<br><span class="warning">▲ Scores were built with a different scoring config than this page uses: run <code>dgi refresh</code> (and restart <code>dgi serve</code>).</span>{% endif %}
+    {% else %}No data yet.{% endif %}
+    · Research tooling, not investment advice.
+  </footer>
+  <script src="/static/vendor/echarts.min.js"></script>
+  <script src="/static/charts.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

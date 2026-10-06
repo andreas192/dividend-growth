@@ -1,0 +1,10 @@
+# The cache is derived and rebuildable, so this volume is disposable: deleting the namespace deletes it.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cache
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi

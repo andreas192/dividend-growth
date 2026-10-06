@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: localhost/dgi
+          imagePullPolicy: Never
+          args: ["serve", "--host", "0.0.0.0", "--port", "8760"]
+          ports:
+            - name: http
+              containerPort: 8760
+          env:
+            - {name: DGI_INVEST_API_URL, value: "http://api.invest.svc.cluster.local:8750"}
+            - {name: DGI_DATA_DIR, value: /data}
+            - {name: DGI_SCORING_CONFIG, value: /config/scoring.yaml}
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {memory: 192Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: cache, mountPath: /data, readOnly: true}
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: cache
+          persistentVolumeClaim:
+            claimName: cache
+        - name: config
+          configMap:
+            name: scoring
+        - name: tmp
+          emptyDir: {}

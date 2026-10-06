@@ -1,0 +1,12 @@
+.git
+.venv
+.tools
+data
+tests
+docs
+deploy
+scripts
+__pycache__
+*.pyc
+.pytest_cache
+.claude

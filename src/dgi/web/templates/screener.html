@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Screener · DGI Screener{% endblock %}
+{% macro th(label, key, numeric=False) -%}
+  {%- set flip = ('asc' if q.descending else 'desc') if q.sort == key else ('asc' if key in ('ticker', 'name', 'sector') else 'desc') -%}
+  <th{% if numeric %} class="num"{% endif %} aria-sort="{{ ('descending' if q.descending else 'ascending') if q.sort == key else 'none' }}">
+    <a href="/?{{ qs(q.params, sort=key, dir=flip, page=1) }}">{{ label }}{% if q.sort == key %} {{ '▼' if q.descending else '▲' }}{% endif %}</a>
+  </th>
+{%- endmacro %}
+{% macro pager(page, pages) -%}
+  {% if pages > 1 %}
+    <nav class="pager" aria-label="Pages">
+      {% if page > 1 %}<a href="/?{{ qs(q.params, page=page - 1) }}">Previous</a>{% endif %}
+      <span>Page {{ page }} of {{ pages }}</span>
+      {% if page < pages %}<a href="/?{{ qs(q.params, page=page + 1) }}">Next</a>{% endif %}
+    </nav>
+  {% endif %}
+{%- endmacro %}
+{% block content %}
+<h1>Dividend growth screener</h1>
+<section class="strip" aria-label="Universe">
+  <div class="stat"><span class="value">{{ stats.universe }}</span><span class="label">companies listed</span></div>
+  <div class="stat"><span class="value">{{ stats.scored }}</span><span class="label">scored</span></div>
+  <div class="stat"><span class="value">{{ stats.passing }}</span><span class="label">pass the filters</span></div>
+  <div class="stat"><span class="value">{{ stats.median_yield|pct }}</span><span class="label">median yield of those</span></div>
+</section>
+
+<form class="filters" method="get" action="/">
+  <div class="field-row">
+    <label>Min streak (years)<input type="number" name="min_streak" min="0" step="1" value="{{ q.params.min_streak }}"></label>
+    <label>Yield from (%)<input type="number" name="min_yield" min="0" step="0.1" value="{{ q.params.min_yield }}"></label>
+    <label>Yield to (%)<input type="number" name="max_yield" min="0" step="0.1" value="{{ q.params.max_yield }}" placeholder="no limit"></label>
+    <label>Max payout of FCF (%)<input type="number" name="max_payout_fcf" min="0" step="5" value="{{ q.params.max_payout_fcf }}" placeholder="no limit"></label>
+    <label>Max payout of earnings (%)<input type="number" name="max_payout_eps" min="0" step="5" value="{{ q.params.max_payout_eps }}" placeholder="no limit"></label>
+    <label>Min market cap ($B)<input type="number" name="min_cap_bn" min="0" step="0.5" value="{{ q.params.min_cap_bn }}"></label>
+    <label>Min score<input type="number" name="min_score" min="0" max="100" step="5" value="{{ q.params.min_score }}"></label>
+    <label>Sector
+      <select name="sector">
+        <option value="">All</option>
+        {% for s in sectors %}<option value="{{ s }}"{% if q.sector == s %} selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" name="unscored" value="1"{% if q.show_unscored %} checked{% endif %}> Show companies that are not scored</label>
+  </div>
+  <fieldset class="weights">
+    <legend>Pillar weights (relative; applied to the stored pillar scores)</legend>
+    {% for p in pillars %}
+      <label>{{ pillar_labels[p] }}
+        <input type="range" name="w_{{ p }}" min="0" max="100" step="5" value="{{ q.params['w_' ~ p] }}">
+        <output>{{ q.params['w_' ~ p] }}</output>
+      </label>
+    {% endfor %}
+  </fieldset>
+  <input type="hidden" name="sort" value="{{ q.sort }}"><input type="hidden" name="dir" value="{{ 'desc' if q.descending else 'asc' }}">
+  <div class="actions"><button type="submit">Apply</button> <a href="/">Reset</a>
+    {% if not q.show_unscored %}<a class="export" href="/screener.csv?{{ qs(q.params) }}">Export CSV</a>{% endif %}</div>
+</form>
+
+{% if q.show_unscored %}
+  <h2>Not scored ({{ unscored_total }})</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Ticker</th><th>Company</th><th>Sector</th><th>Why</th></tr></thead>
+    <tbody>
+    {% for r in unscored %}
+      <tr><td><a href="/company/{{ r.ticker }}">{{ r.ticker }}</a></td><td>{{ r.name }}</td><td>{{ r.sector or dash }}</td><td>{{ r.reason|reason_label }}</td></tr>
+    {% else %}<tr><td colspan="4">Nothing here.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {{ pager(unscored_page, unscored_pages) }}
+{% else %}
+  <section aria-labelledby="scatter-h">
+    <h2 id="scatter-h">Yield against 5-year dividend growth</h2>
+    <p class="note">Each dot is a company that passes the filters; bigger dots score higher. Click a dot to open the company. The table below lists the same companies.</p>
+    <div id="scatter" class="chart tall" data-scatter-url="/api/scatter?{{ qs(q.params) }}" role="img"
+         aria-label="Scatter of dividend yield against five-year dividend growth for the companies in the table"></div>
+  </section>
+  <h2>Ranked companies ({{ page.total }})</h2>
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th class="num">#</th>{{ th('Ticker', 'ticker') }}{{ th('Company', 'name') }}{{ th('Sector', 'sector') }}
+      {{ th('Price', 'price', True) }}{{ th('Yield', 'yield', True) }}{{ th('Streak', 'streak', True) }}{{ th('5y DGR', 'dgr5', True) }}
+      {{ th('Payout FCF', 'payout_fcf', True) }}{{ th('Dividend', 'dividend', True) }}{{ th('Safety', 'safety', True) }}
+      {{ th('Growth', 'growth', True) }}{{ th('Value', 'valuation', True) }}{{ th('Score', 'score', True) }}<th>Flags</th>
+    </tr></thead>
+    <tbody>
+    {% for r in page.rows %}
+      <tr>
+        <td class="num">{{ r.position }}</td>
+        <td><a href="/company/{{ r.ticker }}">{{ r.ticker }}</a></td><td class="name">{{ r.name }}</td><td>{{ r.sector or dash }}</td>
+        <td class="num">{{ r.price|money }}</td><td class="num">{{ r.div_yield|pct }}</td><td class="num">{{ r.streak|streak_label(r.years_history) }}</td>
+        <td class="num">{{ r.dgr_5|pct }}</td><td class="num">{{ r.payout_fcf|pct(0) }}</td>
+        <td class="num">{{ r.dividend|score }}</td><td class="num">{{ r.safety|score }}</td><td class="num">{{ r.growth|score }}</td><td class="num">{{ r.valuation|score }}</td>
+        <td class="num strong">{{ r.score|score }}</td>
+        <td>{% if r.red_flags %}<span class="flag-count" title="{{ r.red_flags|join(', ') }}">▲ {{ r.red_flags|length }} warning{{ 's' if r.red_flags|length != 1 }}</span>{% endif %}</td>
+      </tr>
+    {% else %}<tr><td colspan="15">No company passes these filters. Loosen one of them.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <p class="note">A plus after a streak means the record reaches back to the start of the available dividend history, so the real streak may be longer.</p>
+  {{ pager(page.page, page.pages) }}
+{% endif %}
+{% endblock %}
+{% block scripts %}<script>window.dgiInitScatter && window.dgiInitScatter();</script>{% endblock %}

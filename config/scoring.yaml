@@ -1,0 +1,78 @@
+version: 1
+
+# Weight of each pillar in the total score. Missing pillars are left out and the rest re-weighted.
+pillars:
+  dividend: 0.30
+  safety: 0.30
+  growth: 0.20
+  valuation: 0.20
+
+# Stage 1 (needs a refresh from the API when changed): how dividend history is read.
+metrics:
+  raise_tolerance: 0.001   # a raise is more than this fraction above the prior year
+  cut_tolerance: 0.01      # a cut is more than this fraction below the prior year
+  special_ratio: 1.5       # an extra payment this many times the median regular one is special
+  ttm_min_span_days: 240   # four quarters must span 240-300 days between first and last period end
+  ttm_max_span_days: 300
+  payout_cap: 9.99         # payout ratios are capped at 999%; set to the cap when the denominator is not positive
+  ratio_cap: 99.0          # coverage and leverage ratios are capped here
+
+universe:
+  min_dividend_years: 5
+  max_fundamentals_age_days: 730
+  min_coverage: 0.6
+  excluded_sic_ranges: [[6000, 6199], [6300, 6411], [6798, 6798]]
+
+hard_filters:
+  min_streak: 5
+  max_payout_fcf: 1.0
+  min_market_cap: 1000000000
+  min_yield: 0.0
+
+valuation:
+  required_return: 0.09
+  growth_cap: 0.06
+  growth_floor: 0.0
+  range_delta: 0.01
+
+sector_groups:
+  - {group: Health Care, sic: [[2830, 2836], [3840, 3851], [5122, 5122], [5912, 5912], [8000, 8099]]}
+  - {group: Energy, sic: [[1200, 1399], [2900, 2999], [4610, 4619], [5171, 5172]]}
+  - {group: Utilities, sic: [[4900, 4991]]}
+  - {group: Communication, sic: [[4800, 4899], [2710, 2799], [7310, 7319]]}
+  - {group: Technology, sic: [[3570, 3579], [3600, 3699], [7370, 7379], [3820, 3829]]}
+  - {group: Consumer Staples, sic: [[100, 999], [2000, 2199], [2840, 2844], [5140, 5149], [5400, 5499]]}
+  - {group: Materials, sic: [[1000, 1199], [1400, 1499], [2200, 2299], [2600, 2699], [2800, 2829], [2845, 2899], [3200, 3399]]}
+  - {group: Industrials, sic: [[1500, 1799], [3400, 3569], [3700, 3799], [4000, 4799], [5000, 5099]]}
+  - {group: Consumer Discretionary, sic: [[2300, 2399], [2500, 2599], [3000, 3199], [3630, 3659], [5200, 5399], [5500, 5999], [7000, 7299], [7800, 7999]]}
+
+# Each metric maps to 0-100 by linear interpolation between points (x, score), clamped at the ends.
+# weight is the metric's weight inside its pillar. Starting values adapted from
+# ../dividend-growth-analysis/utils/valuation.py; owner-edited.
+bands:
+  streak:                  {pillar: dividend, weight: 3.0, points: [[0, 0], [5, 50], [10, 75], [25, 100]]}
+  no_cut_streak:           {pillar: dividend, weight: 1.0, points: [[0, 0], [10, 50], [25, 100]]}
+  dgr_1:                   {pillar: dividend, weight: 1.0, points: [[-0.01, 0], [0.0, 20], [0.05, 70], [0.10, 100]]}
+  dgr_3:                   {pillar: dividend, weight: 1.5, points: [[0.0, 0], [0.03, 50], [0.07, 85], [0.10, 100]]}
+  dgr_5:                   {pillar: dividend, weight: 2.0, points: [[0.0, 0], [0.03, 50], [0.07, 85], [0.10, 100]]}
+  dgr_10:                  {pillar: dividend, weight: 1.5, points: [[0.0, 0], [0.03, 50], [0.07, 85], [0.10, 100]]}
+  yield_vs_avg:            {pillar: dividend, weight: 1.0, points: [[-0.3, 0], [0.0, 50], [0.3, 100]]}
+  payment_frequency:       {pillar: dividend, weight: 0.5, points: [[1, 40], [2, 70], [4, 100]]}
+  payout_fcf:              {pillar: safety, weight: 4.0, points: [[0.0, 100], [0.5, 100], [0.75, 75], [1.0, 40], [1.25, 10], [2.0, 0]]}
+  payout_fcf_5y:           {pillar: safety, weight: 2.0, points: [[0.0, 100], [0.5, 100], [0.75, 75], [1.0, 40], [1.25, 10], [2.0, 0]]}
+  payout_earnings:         {pillar: safety, weight: 2.0, points: [[0.0, 100], [0.4, 100], [0.6, 85], [0.75, 65], [1.0, 40], [1.25, 10], [2.0, 0]]}
+  payout_earnings_5y:      {pillar: safety, weight: 1.0, points: [[0.0, 100], [0.4, 100], [0.6, 85], [0.75, 65], [1.0, 40], [1.25, 10], [2.0, 0]]}
+  interest_coverage:       {pillar: safety, weight: 2.0, points: [[1, 0], [3, 40], [6, 75], [12, 100]]}
+  net_debt_ebitda:         {pillar: safety, weight: 2.0, points: [[0, 100], [1, 100], [2, 80], [3, 55], [5, 25], [8, 0]]}
+  current_ratio:           {pillar: safety, weight: 1.0, points: [[0.5, 0], [1.0, 50], [1.5, 80], [2.0, 100]]}
+  positive_earnings_years: {pillar: safety, weight: 2.0, points: [[5, 0], [8, 60], [10, 100]]}
+  rev_cagr_5:              {pillar: growth, weight: 2.0, points: [[-0.02, 0], [0.0, 30], [0.04, 70], [0.08, 100]]}
+  eps_cagr_5:              {pillar: growth, weight: 3.0, points: [[-0.02, 0], [0.0, 30], [0.05, 70], [0.10, 100]]}
+  fcf_ps_cagr_5:           {pillar: growth, weight: 3.0, points: [[-0.02, 0], [0.0, 30], [0.05, 70], [0.10, 100]]}
+  roe:                     {pillar: growth, weight: 2.0, points: [[0.0, 0], [0.08, 40], [0.15, 80], [0.25, 100]]}
+  op_margin_std:           {pillar: growth, weight: 1.0, points: [[0.0, 100], [0.03, 80], [0.08, 40], [0.15, 0]]}
+  share_trend_5:           {pillar: growth, weight: 1.0, points: [[-0.03, 100], [0.0, 60], [0.02, 20], [0.05, 0]]}
+  pe:                      {pillar: valuation, weight: 2.0, points: [[8, 100], [15, 85], [20, 60], [28, 30], [40, 0]]}
+  p_fcf:                   {pillar: valuation, weight: 2.0, points: [[8, 100], [15, 85], [22, 60], [30, 30], [45, 0]]}
+  fcf_yield:               {pillar: valuation, weight: 2.0, points: [[0.02, 0], [0.04, 50], [0.06, 80], [0.08, 100]]}
+  margin_of_safety:        {pillar: valuation, weight: 3.0, points: [[-0.5, 0], [0.0, 50], [0.25, 100]]}
