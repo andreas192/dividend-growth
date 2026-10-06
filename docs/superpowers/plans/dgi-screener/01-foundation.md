@@ -555,6 +555,8 @@ git commit -m "chore: project conventions, hook, isolation script and plan"
 
 ### Task 2: Package skeleton, settings, errors, fsutil, CLI guard
 
+> **Superseded in part by Task 27 (`09-hardening.md`):** `errors.py` also defines `STORAGE_ERRORS`, and `guard` catches only those DuckDB errors (not every `duckdb.Error`).
+
 **Files:**
 - Create: `pyproject.toml`, `.python-version`, `src/dgi/__init__.py`, `src/dgi/errors.py`, `src/dgi/settings.py`, `src/dgi/fsutil.py`, `src/dgi/report.py`, `src/dgi/cli.py`
 - Test: `tests/test_settings.py`, `tests/test_fsutil.py`, `tests/test_report.py`
