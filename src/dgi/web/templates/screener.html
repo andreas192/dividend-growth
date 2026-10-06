@@ -51,6 +51,7 @@
     {% endfor %}
   </fieldset>
   <input type="hidden" name="sort" value="{{ q.sort }}"><input type="hidden" name="dir" value="{{ 'desc' if q.descending else 'asc' }}">
+  {% if q.params.size %}<input type="hidden" name="size" value="{{ q.params.size }}">{% endif %}
   <div class="actions"><button type="submit">Apply</button> <a href="/">Reset</a>
     {% if not q.show_unscored %}<a class="export" href="/screener.csv?{{ qs(q.params) }}">Export CSV</a>{% endif %}</div>
 </form>

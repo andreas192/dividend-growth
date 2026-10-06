@@ -12,17 +12,16 @@ from typer.testing import CliRunner
 
 from dgi import cli
 from dgi.cache.meta import read_meta
+from tests.cache_fixtures import FROZEN_SCORING
 from tests.fake_api import FakeGold
 from tests.sample_gold import build_sample_gold
 
 runner = CliRunner()
-REPO = Path(__file__).resolve().parent.parent
-
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     scoring = tmp_path / "scoring.yaml"
-    shutil.copy(REPO / "config" / "scoring.yaml", scoring)
+    shutil.copy(FROZEN_SCORING, scoring)
     monkeypatch.setattr(cli, "current_date", lambda: dt.date(2026, 10, 5))
     monkeypatch.setattr(cli, "current_time", lambda: dt.datetime(2026, 10, 5, 7, 0, tzinfo=dt.timezone.utc))
     return {"DGI_DATA_DIR": str(tmp_path / "data"), "DGI_SCORING_CONFIG": str(scoring), "DGI_INVEST_API_URL": "http://api.test"}
@@ -89,6 +88,17 @@ def test_new_upstream_data_rebuilds_and_a_scoring_edit_rescores_without_the_api(
     assert "rescored: scoring config changed" in result.output
     assert all("/v1/" not in r for r in gold.requests[requests:])
     assert read_meta(Path(env["DGI_DATA_DIR"]) / "dgi.duckdb").upstream_key == "hash-1|2026-10-05T06:00:00+00:00"
+
+
+def test_a_scoring_edit_rescores_from_the_cache_when_the_api_is_down(env, gold):
+    runner.invoke(cli.app, ["refresh"], env=env)
+    scoring = Path(env["DGI_SCORING_CONFIG"])
+    scoring.write_text(scoring.read_text().replace("min_streak: 5", "min_streak: 7"))
+    gold.down = True
+    result = runner.invoke(cli.app, ["refresh"], env=env)
+    assert result.exit_code == 0, result.output
+    assert "rescored: scoring config changed" in result.output and "warning: the API is unreachable" in result.output
+    assert read_meta(Path(env["DGI_DATA_DIR"]) / "dgi.duckdb").upstream_key == "hash-1|2026-10-04T06:00:00+00:00"
 
 
 def test_refresh_force_rebuilds_even_when_nothing_changed(env, gold):

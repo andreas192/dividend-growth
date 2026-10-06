@@ -39,10 +39,14 @@ fetch() {  # fetch URL DEST EXPECTED_SHA256
   mv "$tmp" "$2"
 }
 
+installed_ok() {  # installed_ok FILE EXPECTED_SHA256: present, executable, and still the bytes that were verified
+  [ -x "$1" ] && [ "$(shasum -a 256 "$1" | awk '{print $1}')" = "$2" ]
+}
+
 mkdir -p "$TOOLS"
 PINS="kubectl=$KUBECTL_VERSION kind=$KIND_VERSION arch=$ARCH"
-if [ -x "$TOOLS/kubectl" ] && [ -x "$TOOLS/kind" ] && [ "$(cat "$TOOLS/PINS" 2>/dev/null)" = "$PINS" ]; then
-  echo "tools already installed: $PINS"
+if installed_ok "$TOOLS/kubectl" "$KUBECTL_SHA" && installed_ok "$TOOLS/kind" "$KIND_SHA"; then
+  echo "tools already installed and checksums verified: $PINS"
   exit 0
 fi
 fetch "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/darwin/$ARCH/kubectl" "$TOOLS/kubectl" "$KUBECTL_SHA"

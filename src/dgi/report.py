@@ -7,13 +7,12 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import NoReturn, TypeVar
 
-import duckdb
 import typer
 from pydantic import ValidationError
 
 from dgi.cache.checks import CheckResult
 from dgi.cache.status import CacheStatus
-from dgi.errors import DgiError
+from dgi.errors import STORAGE_ERRORS, DgiError
 from dgi.results import RefreshResult
 
 T = TypeVar("T")
@@ -24,7 +23,7 @@ def guard(fn: Callable[[], T]) -> T:
         return fn()
     except DgiError as exc:
         _fail(str(exc), exc)
-    except duckdb.Error as exc:
+    except STORAGE_ERRORS as exc:
         _fail(f"cache or database error: {str(exc).splitlines()[0]}", exc)
     except ValidationError as exc:
         _fail(f"invalid configuration or API response: {_validation_summary(exc)}", exc)

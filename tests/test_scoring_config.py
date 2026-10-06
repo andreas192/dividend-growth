@@ -5,8 +5,9 @@ import pytest
 from dgi.errors import ConfigError
 from dgi.metrics.params import MetricParams
 from dgi.scoring.config import KNOWN_METRICS, PILLARS, load_scoring_config, parse_scoring_config
+from tests.cache_fixtures import FROZEN_SCORING
 
-REPO_CONFIG = Path(__file__).resolve().parent.parent / "config" / "scoring.yaml"
+REPO_CONFIG = Path(__file__).resolve().parent.parent / "config" / "scoring.yaml"  # the owner's file: only its shape is tested, never its values
 
 MINIMAL = """
 pillars: {dividend: 1, safety: 1, growth: 1, valuation: 1}
@@ -18,11 +19,15 @@ bands:
 """
 
 
-def test_the_shipped_config_parses_and_scores_every_known_metric():
+def test_the_owners_config_parses_and_scores_every_known_metric():
     cfg = load_scoring_config(REPO_CONFIG)
     assert set(cfg.bands) == KNOWN_METRICS
     assert sum(cfg.pillars.values()) == pytest.approx(1.0)
     assert {b.pillar for b in cfg.bands.values()} == set(PILLARS)
+
+
+def test_the_frozen_config_has_the_values_the_tests_rely_on():
+    cfg = load_scoring_config(FROZEN_SCORING)
     assert cfg.metrics == MetricParams()
     assert cfg.universe.min_coverage == 0.6 and cfg.hard_filters.min_streak == 5
     assert (6798, 6798) in cfg.universe.excluded_sic_ranges

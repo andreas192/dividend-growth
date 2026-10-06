@@ -19,6 +19,17 @@ def test_a_missing_cache_says_to_run_refresh(tmp_path):
         read_status(tmp_path / "dgi.duckdb")
 
 
+def test_a_cache_with_the_wrong_columns_is_cache_missing_not_a_sql_error(tmp_path):
+    from dgi import schema
+    path = tmp_path / "old.duckdb"
+    con = duckdb.connect(str(path))
+    schema.create_tables(con)
+    con.execute("ALTER TABLE scores DROP COLUMN status")
+    con.close()
+    with pytest.raises(CacheMissing, match="does not match.*refresh --force"):
+        read_status(path)
+
+
 def test_a_corrupt_file_and_a_cache_without_meta_are_cache_missing_with_a_way_out(tmp_path):
     corrupt = tmp_path / "corrupt.duckdb"
     corrupt.write_bytes(b"garbage" * 200)

@@ -28,6 +28,19 @@ class RefreshPlan:
     reason: str
 
 
+@dataclass(frozen=True)
+class Upstream:
+    """What the data source says about itself: asked of the API, or taken from the cache when the API cannot be asked."""
+    key: str
+    built_at: str | None
+    contract_version: str
+    contract_warnings: str
+
+    @classmethod
+    def of_cache(cls, meta: CacheMeta) -> Upstream:
+        return cls(meta.upstream_key, meta.upstream_built_at, meta.contract_version, meta.contract_warnings)
+
+
 def write_meta(con: duckdb.DuckDBPyConnection, meta: CacheMeta) -> None:
     recreate_tables(con, ["meta"])
     insert_rows(con, "meta", [meta.__dict__])
@@ -70,6 +83,13 @@ def plan_refresh(
     if meta.scoring_hash != scoring_hash:
         return RefreshPlan(False, True, "scoring config changed")
     return RefreshPlan(False, False, "up to date")
+
+
+def plan_offline(meta: CacheMeta | None, metrics_version: str, scoring_hash: str) -> RefreshPlan | None:
+    """The plan when the API cannot be asked: only a scoring-config change can be served from the cache alone, else None."""
+    if meta is None or meta.metrics_version != metrics_version or meta.scoring_hash == scoring_hash:
+        return None
+    return RefreshPlan(False, True, "scoring config changed")
 
 
 def next_meta(

@@ -7,7 +7,8 @@ from pathlib import Path
 
 import duckdb
 
-from dgi.cache.checks import row_counts
+from dgi.cache.checks import check_schema, row_counts
+from dgi.cache.handle import open_readonly
 from dgi.cache.meta import CacheMeta, read_meta_from
 from dgi.errors import CacheMissing
 
@@ -30,15 +31,8 @@ def read_status_from(con: duckdb.DuckDBPyConnection) -> CacheStatus:
 
 
 def read_status(path: Path) -> CacheStatus:
-    if not path.exists():
-        raise CacheMissing(f"no cache at {path}; run `dgi refresh`")
-    try:
-        con = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error as exc:
-        raise CacheMissing(f"cannot open the cache at {path}: {exc}; run `dgi refresh --force`") from exc
-    try:
+    with open_readonly(path) as con:
+        shape = check_schema(con)
+        if not shape.passed:
+            raise CacheMissing(f"the cache at {path} does not match this version ({shape.detail}); run `dgi refresh --force`")
         return read_status_from(con)
-    except duckdb.Error as exc:
-        raise CacheMissing(f"the cache at {path} is unreadable: {exc}; run `dgi refresh --force`") from exc
-    finally:
-        con.close()

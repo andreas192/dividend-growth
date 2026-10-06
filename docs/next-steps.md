@@ -20,13 +20,11 @@ Blocked until the `invest` kind cluster exists (`../investment/deploy/...` and i
 
 ## 3. Hardening and small gaps
 
-- The screener filter form does not carry `size=`; submitting it returns to the default page size.
-- `dgi refresh` asks `/health` before it rescores, so a scoring-only edit still needs the API up. Consider skipping the call when the upstream key is unchanged and only scoring changed.
-- The error guard maps every DuckDB error, including our own SQL bugs, to "cache or database error", and `dgi check` can label a SQL bug as an unreadable cache. Narrow it.
-- The 404, 400 and `no_cache` pages show no config-drift footer.
-- `tests/`: add a frozen copy of `config/scoring.yaml` so tests do not move when the owner edits the real file.
-- Record the upstream contract `content_hash` in `acceptance-local.md` so contract drift is visible in review.
-- Pin the base image by digest and re-hash installed tools in `scripts/install_tools.sh`.
+Done on `fix/dgi-hardening`: the screener form carries `size=`; `dgi refresh` rescores a scoring-only edit from the cache when the API is unreachable (it still asks `/health` first, so new upstream data is never skipped); the DuckDB error guard, `dgi status` and `dgi check` only treat storage failures as cache errors (SQL bugs show a traceback); the 404 and 422 pages carry the footer; tests use a frozen copy of the scoring config (`tests/frozen/scoring.yaml`); `install_tools.sh` re-hashes the installed binaries on every run.
+
+- Record the upstream contract `content_hash` in `acceptance-local.md` so contract drift is visible in review (needs the real API running).
+- Pin the base image by digest in the `Dockerfile` (needs a registry lookup; `python:3.12-slim` and `ghcr.io/astral-sh/uv:0.12` are still tags).
+- The `no_cache` page has no footer by design: with no cache there is nothing to compare the scoring config with.
 - Acceptance steps not repeated after the final fixes (second run says "up to date", scoring edit without an API pull, revert): repeat them once on the next real run.
 
 ## 4. Process
