@@ -21,6 +21,7 @@
   <footer>
     {% if footer %}Cache built {{ footer.built_at }} UTC · data from {{ footer.upstream_built_at }} · contract {{ footer.contract_version }}
       {% if footer.contract_warnings %}· <span class="warning">▲ {{ footer.contract_warnings }}</span>{% endif %}
+      {% if footer.scoring_drift %}<br><span class="warning">▲ Scores were built with a different scoring config than this page uses: run <code>dgi refresh</code> (and restart <code>dgi serve</code>).</span>{% endif %}
     {% else %}No data yet.{% endif %}
     · Research tooling, not investment advice.
   </footer>

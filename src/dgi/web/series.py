@@ -211,7 +211,7 @@ def daily_charts(points: DailyPoints, payments: Sequence[tuple[date, float]], av
 class SeriesCache:
     """Daily series held in memory, keyed by (upstream key, ticker): a new upstream key never sees an old entry."""
 
-    def __init__(self, max_entries: int = 64) -> None:
+    def __init__(self, max_entries: int = 16) -> None:
         self._max = max_entries
         self._items: OrderedDict[tuple[str, str], list[tuple[date, float]]] = OrderedDict()
         self._lock = threading.Lock()

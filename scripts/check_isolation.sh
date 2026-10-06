@@ -74,9 +74,8 @@ snapshot() {
   ls -1 "$HOME/.local/bin" 2>/dev/null
   echo "## shell startup files"
   shasum "$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.bash_profile" 2>/dev/null
-  echo "## podman containers (the kind node of the invest cluster is expected and unchanged) and machine"
+  echo "## podman containers (the kind node of the invest cluster is expected and unchanged)"
   podman ps -a --format '{{.Names}} {{.Image}} {{.Ports}}' 2>/dev/null | sort
-  podman machine list --format '{{.Name}} running={{.Running}}' 2>/dev/null
   echo "## capital-trading repo"
   git -C "$CT" rev-parse HEAD 2>/dev/null
   git -C "$CT" status --porcelain 2>/dev/null

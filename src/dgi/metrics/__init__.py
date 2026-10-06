@@ -12,7 +12,7 @@ from dgi.metrics.params import MetricParams, params_hash
 from dgi.metrics.sqlrun import create_run_params, run_sql_file
 from dgi.schema import recreate_tables
 
-METRICS_VERSION = "1"
+METRICS_VERSION = "2"
 METRIC_TABLES = ("company_dim", "dividend_payment", "dividend_annual", "price_yearend", "fundamentals_annual", "metrics_current")
 
 

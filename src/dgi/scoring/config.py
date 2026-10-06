@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from dgi.errors import ConfigError
 from dgi.metrics.params import MetricParams
@@ -18,7 +18,13 @@ KNOWN_METRICS = frozenset({
 })
 
 
-class Band(BaseModel):
+class StrictModel(BaseModel):
+    """A config model: a key it does not know is a typo and an error."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class Band(StrictModel):
     pillar: str
     weight: float = Field(gt=0)
     points: list[tuple[float, float]]
@@ -43,19 +49,19 @@ class Band(BaseModel):
         return points
 
 
-class Universe(BaseModel):
+class Universe(StrictModel):
     min_dividend_years: int = 5
     max_fundamentals_age_days: int = 730
     min_coverage: float = Field(default=0.6, ge=0, le=1)
     excluded_sic_ranges: list[tuple[int, int]] = [(6000, 6199), (6300, 6411), (6798, 6798)]
 
 
-class SectorRule(BaseModel):
+class SectorRule(StrictModel):
     group: str
     sic: list[tuple[int, int]]
 
 
-class HardFilters(BaseModel):
+class HardFilters(StrictModel):
     min_streak: int = 5
     max_payout_fcf: float | None = 1.0
     max_payout_eps: float | None = None
@@ -65,14 +71,14 @@ class HardFilters(BaseModel):
     min_score: float = 0.0
 
 
-class ValuationParams(BaseModel):
+class ValuationParams(StrictModel):
     required_return: float = Field(default=0.09, gt=0)
     growth_cap: float = Field(default=0.06, ge=0)
     growth_floor: float = Field(default=0.0, ge=0)
     range_delta: float = Field(default=0.01, ge=0)
 
 
-class ScoringConfig(BaseModel):
+class ScoringConfig(StrictModel):
     version: int = 1
     pillars: dict[str, float]
     metrics: MetricParams = MetricParams()

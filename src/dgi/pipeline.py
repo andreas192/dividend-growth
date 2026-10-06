@@ -115,4 +115,5 @@ def run_check(settings: Settings) -> list[CheckResult]:
 
 def build_web_app(settings: Settings, client: ApiClient) -> Starlette:
     """The UI over the live cache; the company page's daily charts read one ticker at a time through `client`."""
-    return create_app(settings, load_scoring_config(settings.scoring_path), ApiPriceSource(client))
+    cfg = load_scoring_config(settings.scoring_path)
+    return create_app(settings, cfg, ApiPriceSource(client), scoring_hash=file_sha256(settings.scoring_path))

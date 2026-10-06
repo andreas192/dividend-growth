@@ -6,12 +6,12 @@ from starlette.testclient import TestClient
 from dgi.cache.build import new_path, swap_in
 from dgi.settings import Settings
 from dgi.web.app import create_app
-from tests.cache_fixtures import CFG, cache_with, make_meta, persist
+from tests.cache_fixtures import CFG, cache_with, make_meta, persist, scored_cache
 from tests.web_fixtures import sample_cache
 
 
-def client_for(tmp_path, price_source=None) -> TestClient:
-    return TestClient(create_app(Settings(data_dir=tmp_path), CFG, price_source))
+def client_for(tmp_path, price_source=None, scoring_hash=None) -> TestClient:
+    return TestClient(create_app(Settings(data_dir=tmp_path), CFG, price_source, scoring_hash=scoring_hash))
 
 
 @pytest.fixture
@@ -64,6 +64,21 @@ def test_the_footer_shows_the_build_and_any_contract_warning(tmp_path):
     with client_for(tmp_path) as client:
         text = client.get("/methodology").text
     assert "Cache built 2026-10-05 07:00 UTC" in text and "contract v1" in text and "deprecated, sunset 2027-01-01" in text
+
+
+@pytest.mark.parametrize("page", ["/", "/methodology", "/company/AAA"])
+def test_the_footer_warns_when_the_page_uses_a_different_scoring_config_than_the_scores(tmp_path, page):
+    persist(scored_cache({"AAA": ("2080", {})}), tmp_path / "dgi.duckdb", make_meta(scoring_hash="old"))
+    with client_for(tmp_path, scoring_hash="new") as client:
+        text = client.get(page).text
+    assert "Scores were built with a different scoring config than this page uses: run <code>dgi refresh</code>" in text
+
+
+def test_the_footer_has_no_scoring_notice_when_the_hashes_match_or_none_is_given(tmp_path):
+    persist(cache_with({"AAA": ("2080", {})}), tmp_path / "dgi.duckdb", make_meta(scoring_hash="same"))
+    for scoring_hash in ("same", None):
+        with client_for(tmp_path, scoring_hash=scoring_hash) as client:
+            assert "different scoring config" not in client.get("/methodology").text
 
 
 def test_a_cache_swapped_under_the_running_app_is_served_without_a_restart(tmp_path):

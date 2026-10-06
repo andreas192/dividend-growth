@@ -56,11 +56,12 @@ def make_templates() -> Jinja2Templates:
     return templates
 
 
-def footer(meta: CacheMeta | None) -> dict[str, Any] | None:
+def footer(meta: CacheMeta | None, scoring_hash: str | None = None) -> dict[str, Any] | None:
     if meta is None:
         return None
     return {"built_at": meta.built_at[:16].replace("T", " "), "upstream_built_at": (meta.upstream_built_at or "unknown")[:10],
-            "contract_version": meta.contract_version, "contract_warnings": meta.contract_warnings}
+            "contract_version": meta.contract_version, "contract_warnings": meta.contract_warnings,
+            "scoring_drift": scoring_hash is not None and scoring_hash != meta.scoring_hash}
 
 
 def render(request: Request, name: str, context: dict[str, Any], status: int = 200) -> Response:
@@ -94,7 +95,7 @@ def screener(request: Request) -> Response:
             page = query_screener(con, q)
         context = {"q": q, "stats": stats, "page": page, "unscored": unscored, "unscored_total": unscored_total,
                    "unscored_page": min(q.page, unscored_pages), "unscored_pages": unscored_pages,
-                   "sectors": sector_groups(con), "footer": footer(read_meta_from(con))}
+                   "sectors": sector_groups(con), "footer": footer(read_meta_from(con), state.scoring_hash)}
     return render(request, "screener.html", context)
 
 
@@ -157,7 +158,7 @@ def company(request: Request) -> Response:
     show_ratios = view.reason != "financial_or_reit"
     charts = [c for c in annual_charts(annual, view.metrics.get("div_yield_avg_5y")) if show_ratios or c.id not in RATIO_CHARTS]
     context = {"c": view, "charts": [c.to_json() for c in charts], "show_ratios": show_ratios,
-               "valuation": valuation_panel(view, state.cfg) if show_ratios else None, "footer": footer(meta)}
+               "valuation": valuation_panel(view, state.cfg) if show_ratios else None, "footer": footer(meta, state.scoring_hash)}
     return render(request, "company.html", context)
 
 
@@ -186,7 +187,7 @@ def methodology(request: Request) -> Response:
     state = request.app.state
     with state.handle.connection() as con:
         meta = None if con is None else read_meta_from(con)
-    return render(request, "methodology.html", {"cfg": state.cfg, "footer": footer(meta)})
+    return render(request, "methodology.html", {"cfg": state.cfg, "footer": footer(meta, state.scoring_hash)})
 
 
 def health(request: Request) -> Response:
@@ -208,7 +209,7 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
     app.state.handle.close()
 
 
-def create_app(settings: Settings, cfg: ScoringConfig, price_source: PriceSource | None = None) -> Starlette:
+def create_app(settings: Settings, cfg: ScoringConfig, price_source: PriceSource | None = None, scoring_hash: str | None = None) -> Starlette:
     app = Starlette(
         routes=[
             Route("/", screener), Route("/screener.csv", screener_csv), Route("/api/scatter", scatter),
@@ -221,6 +222,7 @@ def create_app(settings: Settings, cfg: ScoringConfig, price_source: PriceSource
         lifespan=lifespan,
     )
     app.state.cfg = cfg
+    app.state.scoring_hash = scoring_hash  # of the file `cfg` was loaded from; None skips the drift notice
     app.state.handle = CacheHandle(settings.cache_path)
     app.state.templates = make_templates()
     app.state.price_source = price_source

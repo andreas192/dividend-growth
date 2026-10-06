@@ -52,6 +52,13 @@ def test_the_metrics_section_overrides_the_history_parameters():
         (MINIMAL.replace("pillars: {dividend: 1, safety: 1, growth: 1, valuation: 1}", "pillars: {dividend: 1, safety: 1}"), "each of dividend"),
         (MINIMAL.replace("  streak: {pillar: dividend, weight: 1, points: [[0, 0], [10, 100]]}\n", ""), "pillar dividend has weight but no metric bands"),
         ("pillars: [", "invalid scoring config"),
+        (MINIMAL + "hard_filter: {min_streak: 3}\n", "hard_filter"),
+        (MINIMAL + "hard_filters: {min_streek: 3}\n", "min_streek"),
+        (MINIMAL + "universe: {min_coverge: 0.5}\n", "min_coverge"),
+        (MINIMAL + "valuation: {required_retrun: 0.1}\n", "required_retrun"),
+        (MINIMAL + "metrics: {cut_tolerence: 0.02}\n", "cut_tolerence"),
+        (MINIMAL.replace("weight: 1, points: [[0, 0], [10, 100]]", "weight: 1, wieght: 2, points: [[0, 0], [10, 100]]"), "wieght"),
+        (MINIMAL + "sector_groups: [{group: Energy, sic: [[1, 2]], extra: 1}]\n", "extra"),
     ],
 )
 def test_invalid_configs_raise_a_config_error_that_says_why(text, message):

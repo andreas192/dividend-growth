@@ -27,6 +27,8 @@ win10 AS (
 SELECT c.ticker, c.fy AS latest_fy, c.period_end AS fy_period_end,
        c.payout_earnings, c.payout_fcf, w5.payout_earnings_5y, w5.payout_fcf_5y, w5.op_margin_std,
        CASE WHEN c.operating_income IS NULL THEN NULL
+            WHEN c.operating_income <= 0 THEN 0.0
+            WHEN c.interest_expense IS NULL AND COALESCE(c.debt, 1) > 0 THEN NULL  -- interest unknown while debt exists or is unknown
             WHEN COALESCE(c.interest_expense, 0) <= 0 THEN (SELECT ratio_cap FROM run_params)
             ELSE least(c.operating_income / c.interest_expense, (SELECT ratio_cap FROM run_params)) END AS interest_coverage,
        CASE WHEN c.net_debt IS NULL OR c.ebitda IS NULL THEN NULL

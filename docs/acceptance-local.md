@@ -15,7 +15,7 @@ API: `invest serve` on 127.0.0.1:8750, gold built 2026-10-05T16:54:24.390595+00:
 
 ## Web (`dgi serve`)
 
-- RSS idle: 86.8 MiB; after browsing screener, two company pages, daily series, CSV: 132.2 MiB (122.2 MiB after the two headless Chrome screenshots that followed). These are RSS samples, not a measured maximum. The in-memory daily-series cache grows about 0.9 MB per ticker visited. To measure the web server, note that `pgrep -f "dgi serve"` returns the `uv run` wrapper: pick the Python child process instead
+- RSS idle: 86.8 MiB; after browsing screener, two company pages, daily series, CSV: 132.2 MiB (122.2 MiB after the two headless Chrome screenshots that followed). These are RSS samples, not a measured maximum. The in-memory daily-series cache grows about 0.9 MB per ticker visited and is bounded at 16 entries (one long-history series is about 1.9 MB, so at most about 31 MB on top of the idle footprint). To measure the web server, note that `pgrep -f "dgi serve"` returns the `uv run` wrapper: pick the Python child process instead
 - Page times: screener 37 ms, filtered screener 14 ms, company 22 ms and 9 ms, scatter 6 ms, CSV 13 ms, methodology 7 ms, health 3 ms; all 200
 - Daily series, first request: 0.88 s (195.8 KB gzipped, 859.7 KB uncompressed)
 
@@ -32,7 +32,7 @@ API: `invest serve` on 127.0.0.1:8750, gold built 2026-10-05T16:54:24.390595+00:
 Peak figures are macOS `ru_maxrss` of the `uv run` process tree, so 832 Mi and 192 Mi are a starting point for a Linux container, not a guarantee.
 
 - refresh: `limit = ceil(634.2 x 1.25 / 64) x 64 = 832 Mi` (634.2 MiB is the measured refresh peak)
-- web: `limit = ceil(132.2 x 1.25 / 64) x 64 = 192 Mi` (132.2 MiB is the RSS after browsing, not a peak; the daily-series cache grows about 0.9 MB per ticker visited)
+- web: `limit = ceil(132.2 x 1.25 / 64) x 64 = 192 Mi` (132.2 MiB is the RSS after browsing, not a peak; the daily-series cache is bounded at 16 entries of about 2 MB each, at most about 31 MB more, which fits the 192 Mi limit)
 
 ## In-cluster acceptance
 

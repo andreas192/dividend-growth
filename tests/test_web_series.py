@@ -163,6 +163,16 @@ def test_series_cache_evicts_the_oldest_entry_past_its_limit():
     assert calls == ["A", "B", "C", "A again"]
 
 
+def test_the_default_series_cache_holds_sixteen_entries():
+    cache, calls = SeriesCache(), []
+    for n in range(17):
+        cache.get_or_load("u", f"T{n}", lambda: calls.append("load") or [])
+    cache.get_or_load("u", "T16", lambda: calls.append("T16 again") or [])  # newest still cached
+    cache.get_or_load("u", "T1", lambda: calls.append("T1 again") or [])  # second oldest still cached
+    cache.get_or_load("u", "T0", lambda: calls.append("T0 again") or [])  # the oldest was evicted by the 17th
+    assert calls[17:] == ["T0 again"]
+
+
 def test_a_failing_loader_caches_nothing():
     cache = SeriesCache()
     with pytest.raises(RuntimeError):

@@ -57,6 +57,22 @@ def test_average_yield_needs_three_complete_years_with_prices_and_the_suspect_co
     assert first(con, "SELECT count(*) FROM tmp_suspect WHERE ticker = 'AAA'") == (0,)
 
 
+def test_a_special_payment_above_the_price_is_not_a_suspect_dividend_but_a_regular_one_is():
+    con = metrics_con()
+    add_dividends(con, "AAA", [p for y in range(2019, 2026) for p in quarterly(y, 0.25)] + [(D(2024, 12, 20), 60.0)])  # special above the price
+    add_year_end_prices(con, "AAA", {y: 50.0 for y in range(2019, 2026)})
+    add_dividends(con, "BBB", [p for y in range(2019, 2026) for p in quarterly(y, 0.25)] + [(D(2024, 12, 20), 3.0)])
+    add_year_end_prices(con, "BBB", {y: 2.0 for y in range(2019, 2026)})  # the 3.0 special and nothing else is above the price
+    add_dividends(con, "CCC", [p for y in range(2019, 2026) for p in quarterly(y, 0.25)] + [(D(2024, 12, 20), 3.0)])
+    add_year_end_prices(con, "CCC", {y: 0.2 for y in range(2019, 2026)})  # regular payments above the price
+    run_sql_file(con, "price_yearend")
+    run_sql_file(con, "dividend_payment")
+    run_sql_file(con, "dividend_annual")
+    run_sql_file(con, "price_dividend")
+    assert first(con, "SELECT count(*) FROM tmp_suspect WHERE ticker IN ('AAA', 'BBB')") == (0,)
+    assert first(con, "SELECT suspect_dividend_count FROM tmp_suspect WHERE ticker = 'CCC'")[0] == 24  # 2020-2025 regular payments, the special excluded
+
+
 def fund_facts(con, ticker="AAA", years=range(2015, 2026), cik=1):
     """Eleven fiscal years of a steady grower: revenue +4%, net income +5%, shares -1% a year."""
     for fy in years:
@@ -103,9 +119,36 @@ def test_fund_metrics_edge_cases_cap_or_leave_null():
     run_sql_file(con, "fundamentals_annual")
     run_sql_file(con, "fund_metrics")
     a = first(con, "SELECT interest_coverage, net_debt_ebitda, roe FROM tmp_fund_metrics WHERE ticker = 'AAA'")
-    assert a == (99.0, 99.0, None)  # no interest -> capped coverage; positive net debt on negative EBITDA -> capped; negative equity -> no ROE
+    assert a == (None, 99.0, None)  # no interest with known debt -> unknown coverage; positive net debt on negative EBITDA -> capped; negative equity -> no ROE
     b = first(con, "SELECT net_debt_ebitda FROM tmp_fund_metrics WHERE ticker = 'BBB'")
     assert b == (0.0,)  # net cash
+
+
+def coverage_for(operating_income, interest_expense, long_term_debt, balance_reported=True):
+    con = metrics_con()
+    if operating_income is not None:
+        add_facts(con, "stg_income_annual", "AAA", [("operating_income", 2025, operating_income)])
+    add_facts(con, "stg_income_annual", "AAA", [("net_income", 2025, 10.0)])
+    if interest_expense is not None:
+        add_facts(con, "stg_income_annual", "AAA", [("interest_expense", 2025, interest_expense)])
+    if balance_reported:
+        facts = [("cash_and_equivalents", 2025, 1.0)] + ([("long_term_debt", 2025, long_term_debt)] if long_term_debt else [])
+        add_facts(con, "stg_balance_annual", "AAA", facts)
+    run_sql_file(con, "fundamentals_annual")
+    run_sql_file(con, "fund_metrics")
+    return first(con, "SELECT interest_coverage FROM tmp_fund_metrics")[0]
+
+
+def test_interest_coverage_never_scores_missing_data_as_perfect():
+    assert coverage_for(None, 10.0, 50.0) is None  # no operating income
+    assert coverage_for(-5.0, 10.0, 50.0) == 0.0  # operating loss
+    assert coverage_for(0.0, None, 50.0) == 0.0  # operating loss wins over missing interest
+    assert coverage_for(100.0, None, 50.0) is None  # interest unknown while debt exists
+    assert coverage_for(100.0, None, None, balance_reported=False) is None  # no balance sheet: debt unknown
+    assert coverage_for(100.0, None, None) == 99.0  # debt known to be zero
+    assert coverage_for(100.0, 0.0, 50.0) == 99.0  # interest reported as zero
+    assert coverage_for(100.0, 10.0, 50.0) == 10.0
+    assert coverage_for(1000.0, 1.0, 50.0) == 99.0  # capped
 
 
 def ttm_quarters(con, ticker, ends, ni=30.0, cfo=35.0, capex=-6.0, shares=90.0):
@@ -201,5 +244,5 @@ def test_build_metrics_can_run_twice_on_the_same_connection():
 
 def test_metrics_version_changes_with_the_metrics_params_only():
     base = metrics_version(MetricParams())
-    assert metrics_version(MetricParams()) == base
+    assert metrics_version(MetricParams()) == base and base.startswith("2:")
     assert metrics_version(MetricParams(cut_tolerance=0.02)) != base

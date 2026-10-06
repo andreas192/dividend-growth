@@ -19,6 +19,7 @@ from dgi.scoring.valuation import base_growth, fair_value_range, margin_of_safet
 
 SCORE_TABLES = ("scores", "score_detail", "flags")
 SECTOR_OTHER = "Other"
+FINANCIAL_REASON = "financial_or_reit"
 
 
 @dataclass(frozen=True)
@@ -47,7 +48,7 @@ def sector_group(sic: str | None, rules: Sequence[SectorRule]) -> str:
 def universe_reason(row: Mapping[str, Any], today: date, universe: Universe) -> str | None:
     """Why a company is not scored, or None when it is a candidate. Checked in this order."""
     if in_ranges(sic_number(row["sic"]), universe.excluded_sic_ranges):
-        return "financial_or_reit"
+        return FINANCIAL_REASON
     if row["price"] is None:
         return "no_price"
     years = row["years_history"]
@@ -57,6 +58,10 @@ def universe_reason(row: Mapping[str, Any], today: date, universe: Universe) -> 
     if fy_end is None or (today - fy_end).days > universe.max_fundamentals_age_days:
         return "insufficient_data"
     return None
+
+
+def flag_rows(row: Mapping[str, Any]) -> list[dict[str, Any]]:
+    return [{"ticker": row["ticker"], "code": f.code, "severity": f.severity, "text": f.text} for f in compute_flags(row)]
 
 
 def load_rows(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
@@ -88,6 +93,8 @@ def score_cache(con: duckdb.DuckDBPyConnection, cfg: ScoringConfig, today: date)
     for row in rows:
         group = sector_group(row["sic"], cfg.sector_groups)
         reason = universe_reason(row, today, cfg.universe)
+        if reason != FINANCIAL_REASON:
+            flags += flag_rows(row)
         if reason is not None:
             reasons[reason] += 1
             scores.append(_empty_score(row, "not_scored", reason, group))
@@ -109,7 +116,6 @@ def score_cache(con: duckdb.DuckDBPyConnection, cfg: ScoringConfig, today: date)
         })
         details += [{"ticker": row["ticker"], "metric": d.metric, "pillar": d.pillar, "value": d.value, "band_score": d.band_score,
                      "weight": d.weight, "contribution": d.contribution} for d in result.details]
-        flags += [{"ticker": row["ticker"], "code": f.code, "severity": f.severity, "text": f.text} for f in compute_flags(row)]
     _percentiles(details)
     recreate_tables(con, SCORE_TABLES)
     insert_rows(con, "scores", scores)

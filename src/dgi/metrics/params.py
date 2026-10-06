@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from dgi.fsutil import text_sha256
 
 
 class MetricParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     raise_tolerance: float = 0.001   # a raise is more than this fraction above the prior year
     cut_tolerance: float = 0.01      # a cut is more than this fraction below the prior year
     special_ratio: float = 1.5       # an extra payment this many times the median regular one is special

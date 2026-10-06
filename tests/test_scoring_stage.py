@@ -55,14 +55,18 @@ def test_a_scored_company_has_a_total_pillars_fair_value_and_an_explanation():
     assert con.execute("SELECT count(DISTINCT metric) FROM score_detail").fetchone() == (26,)
 
 
-def test_not_scored_companies_keep_a_reason_and_get_no_detail_or_flags():
-    con = cache_with({"BANK": ("6021", {}), "NEWC": ("2080", {"years_history": 3}), "NOPX": ("2080", {"price": None}), "AAA": ("2080", {})})
+def test_not_scored_companies_keep_a_reason_and_get_no_detail_and_flags_unless_financial():
+    bad = {"payout_fcf": 1.3}
+    con = cache_with({
+        "BANK": ("6021", bad), "NEWC": ("2080", {"years_history": 3, **bad}), "NOPX": ("2080", {"price": None, **bad}), "AAA": ("2080", {}),
+    })
     result = score_cache(con, CFG, TODAY)
     assert result.scored == 1 and result.not_scored == {"financial_or_reit": 1, "short_dividend_history": 1, "no_price": 1}
     assert table(con, "SELECT ticker, status, reason FROM scores WHERE status = 'not_scored' ORDER BY ticker") == [
         ("BANK", "not_scored", "financial_or_reit"), ("NEWC", "not_scored", "short_dividend_history"), ("NOPX", "not_scored", "no_price")]
     assert table(con, "SELECT DISTINCT ticker FROM score_detail") == [("AAA",)]
     assert table(con, "SELECT total FROM scores WHERE ticker = 'BANK'") == [(None,)]
+    assert table(con, "SELECT ticker, code FROM flags ORDER BY ticker") == [("NEWC", "payout_fcf_over_100"), ("NOPX", "payout_fcf_over_100")]
 
 
 def test_a_company_below_minimum_coverage_is_insufficient_data_not_ranked():
@@ -71,6 +75,15 @@ def test_a_company_below_minimum_coverage_is_insufficient_data_not_ranked():
     result = score_cache(con, CFG, TODAY)
     assert result.scored == 0 and result.not_scored == {"insufficient_data": 1}
     assert table(con, "SELECT status, reason, total FROM scores") == [("not_scored", "insufficient_data", None)]
+
+
+def test_an_insufficient_data_company_still_carries_its_flags():
+    sparse = {k: None for k in GOOD if k not in ("price", "years_history", "fy_period_end", "streak", "dividend_ttm")}
+    con = cache_with({"SPARSE": ("2080", {**sparse, "payout_earnings": 1.4})})
+    score_cache(con, CFG, TODAY)
+    assert table(con, "SELECT status, reason FROM scores") == [("not_scored", "insufficient_data")]
+    assert table(con, "SELECT code FROM flags") == [("payout_eps_over_100",)]
+    assert table(con, "SELECT count(*) FROM score_detail") == [(0,)]
 
 
 def test_percentiles_rank_a_metric_among_the_scored_companies():

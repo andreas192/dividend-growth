@@ -14,6 +14,15 @@ ALLOWED = {
     "cache": LEAVES | {"scoring", "cache"},
     "web": {"errors", "settings", "cache", "web"},
 }
+# Top-level modules other than the wiring (cli.py, pipeline.py): what each may import from dgi, taken from the real imports.
+MODULE_ALLOWED = {
+    "errors": set(),
+    "fsutil": set(),
+    "schema": set(),
+    "settings": {"errors"},
+    "results": {"cache", "metrics", "scoring"},
+    "report": {"cache", "errors", "results"},
+}
 
 
 RELATIVE = "<relative import>"  # in no ALLOWED set: a relative import fails the layering test
@@ -51,14 +60,20 @@ def test_relative_imports_are_reported_so_they_cannot_dodge_the_layering(tmp_pat
 @pytest.mark.parametrize("package", sorted(ALLOWED))
 def test_each_layer_imports_only_what_it_may(package):
     folder = SRC / package
-    if not folder.exists():
-        pytest.skip(f"{package} is added by a later task")
+    assert folder.is_dir(), f"{package} is enforced here but its folder is gone: renamed or moved?"
     offenders = {
         str(path.relative_to(SRC)): sorted(dgi_imports(path) - ALLOWED[package])
         for path in folder.rglob("*.py")
         if dgi_imports(path) - ALLOWED[package]
     }
     assert offenders == {}
+
+
+@pytest.mark.parametrize("module", sorted(MODULE_ALLOWED))
+def test_each_top_level_module_imports_only_what_it_may(module):
+    path = SRC / f"{module}.py"
+    assert path.is_file(), f"{module} is enforced here but its file is gone: renamed or moved?"
+    assert dgi_imports(path) - MODULE_ALLOWED[module] == set()
 
 
 def test_the_layering_test_fails_on_a_relative_import(tmp_path):

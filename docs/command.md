@@ -20,6 +20,8 @@ uv run dgi check                            # quality checks on the live cache
 uv run dgi serve                            # web UI on 127.0.0.1:8760
 ```
 
+A scoring-only edit of `config/scoring.yaml` needs no new pull but still needs `dgi refresh` (it asks the API's `/health` first, so the API must be reachable) and a restart of `dgi serve` (the app loads the file once; the footer warns when the stored scores came from a different file).
+
 Settings (env): `DGI_INVEST_API_URL` (default `http://127.0.0.1:8750`), `DGI_DATA_DIR` (default `data`), `DGI_SCORING_CONFIG` (default `config/scoring.yaml`), `DGI_HOST`, `DGI_PORT`.
 
 ## Tests

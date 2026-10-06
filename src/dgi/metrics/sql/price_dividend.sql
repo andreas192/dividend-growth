@@ -23,5 +23,5 @@ CREATE OR REPLACE TEMP TABLE tmp_suspect AS
 SELECT p.ticker, count(*)::INTEGER AS suspect_dividend_count
 FROM dividend_payment p
 JOIN price_yearend y ON y.ticker = p.ticker AND y.year = p.year - 1
-WHERE p.amount_adj >= y.close_adj
+WHERE NOT p.is_special AND p.amount_adj >= y.close_adj  -- specials raise their own info flag
 GROUP BY p.ticker;
