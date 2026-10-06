@@ -45,7 +45,7 @@ Layout:
 ```
 config/scoring.yaml        pillar weights, metric bands, hard-filter defaults, tolerances, sector map (owner-edited)
 src/dgi/cli.py, pipeline.py   wiring only (no unit spec)
-src/dgi/errors.py, settings.py, fsutil.py, schema.py, report.py
+src/dgi/errors.py, settings.py, fsutil.py, schema.py, report.py, results.py
 src/dgi/client/            the only HTTP code: paging, Arrow, contract check, pull specs, staging
 src/dgi/metrics/           SQL (DuckDB) and streak code: dividend, fundamentals and current metrics
 src/dgi/scoring/           config model, bands, pillars, fair value, flags, score stage
@@ -53,7 +53,7 @@ src/dgi/cache/             meta, atomic swap, quality checks, read-only queries 
 src/dgi/web/               routes, templates, static (vendored ECharts)
 tests/                     offline, fixtures built in code
 deploy/k8s/                kustomize base
-scripts/                   install_tools.sh, vendor_echarts.sh, build_image.sh, deploy.sh, open.sh, check_isolation.sh
+scripts/                   install_tools.sh, vendor_echarts.sh, image_tag.sh, build_image.sh, deploy.sh, delete.sh, open.sh, lib.sh, check_isolation.sh
 docs/                      code-conventions.md, token-strategy.md, rate-limits.md, command.md, specs, plans
 ```
 
