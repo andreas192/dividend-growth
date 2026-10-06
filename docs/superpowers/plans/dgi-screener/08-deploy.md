@@ -17,6 +17,8 @@ Rules (from the spec and CLAUDE.md), enforced by the scripts and by tests:
 
 ### Task 24: Image, scripts and manifests
 
+> **Changed by Task 31 (`09-hardening.md`):** `scripts/install_tools.sh` decides "already installed" by re-hashing both binaries against the pins, not from the `PINS` marker file.
+
 **Files:**
 - Create: `Dockerfile`, `.dockerignore`, `scripts/lib.sh`, `scripts/install_tools.sh`, `scripts/image_tag.sh`, `scripts/build_image.sh`, `scripts/deploy.sh`, `scripts/delete.sh`, `scripts/open.sh`, `deploy/k8s/{kustomization,namespace,pvc,web,service,refresh}.yaml`
 - Modify: `scripts/check_isolation.sh` (replace with the version that also covers the cluster's other namespaces)

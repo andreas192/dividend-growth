@@ -22,6 +22,8 @@ Chart design follows the `dataviz` skill (loaded while writing this plan). Choic
 
 ### Task 18: Cache handle and screener queries
 
+> **Extended by Task 27 (`09-hardening.md`):** `cache/handle.py` also has `open_readonly`, the CLI's read-only connection.
+
 **Files:**
 - Create: `src/dgi/cache/handle.py`, `src/dgi/cache/screener.py`; replace `src/dgi/cache/__init__.py` (re-exports; the company names arrive in Task 19)
 - Test: `tests/web_fixtures.py`, `tests/test_cache_handle.py`, `tests/test_cache_screener.py`
@@ -1545,6 +1547,8 @@ git commit -m "feat: web formatting, chart data builders and vendored ECharts"
 
 ### Task 21: Web app (routes, templates, styles, charts)
 
+> **Changed by Task 29 (`09-hardening.md`):** the 404 and 422 pages carry the footer and scoring-drift notice (`page_footer`), and the screener filter form keeps a non-default `size=`.
+
 One task with three checkpoints, each ending green and committed: (A) app skeleton with health, methodology and the no-cache page; (B) the screener; (C) the company page. The route handlers stay thin: parse, query `dgi.cache`, render.
 
 **Files:**
@@ -2830,6 +2834,8 @@ git commit -m "feat: company page with score explanation, valuation panel and ch
 ---
 
 ### Task 22: `serve` command and the price source
+
+> **Changed by Tasks 27 and 28 (`09-hardening.md`):** the `pipeline.py` shown here is the pre-hardening version; the repo's `pipeline.py` has `choose_plan`, `Upstream` and `open_readonly`.
 
 Wires the UI to the real API for the daily charts and adds the command. Wiring only; the logic is unit-tested in Tasks 4, 20 and 21, and one PIPELINE test proves the whole path.
 

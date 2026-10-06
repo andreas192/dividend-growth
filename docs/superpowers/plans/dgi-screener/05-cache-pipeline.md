@@ -23,6 +23,8 @@ DuckDB caches database instances per path inside one process: after a file is re
 
 ### Task 15: Cache meta, refresh planning, working and candidate files, atomic swap
 
+> **Extended by Task 28 (`09-hardening.md`):** `meta.py` also has `Upstream` and `plan_offline`. Fixtures load `CFG` from the frozen config (Task 30).
+
 **Files:**
 - Create: `src/dgi/cache/__init__.py` (a docstring now; replaced in Tasks 18 and 19), `src/dgi/cache/meta.py`, `src/dgi/cache/build.py`
 - Modify: `tests/cache_fixtures.py` (adds `make_meta`, `persist`)
@@ -444,6 +446,8 @@ git commit -m "feat: cache meta, refresh planning, working file, compaction and 
 
 ### Task 16: Cache quality checks and status
 
+> **Changed by Task 27 (`09-hardening.md`):** `read_status` uses `open_readonly` and reports a schema mismatch as `CacheMissing`; only storage errors count as cache errors.
+
 **Files:**
 - Create: `src/dgi/cache/checks.py`, `src/dgi/cache/status.py`
 - Test: `tests/test_cache_checks.py`, `tests/test_cache_status.py`
@@ -817,6 +821,8 @@ git commit -m "feat: cache quality checks and status"
 ---
 
 ### Task 17: Refresh pipeline, `refresh` / `status` / `check` commands, and the PIPELINE tests
+
+> **Changed by Tasks 27, 28 and 30 (`09-hardening.md`):** `run_refresh` asks `choose_plan` (offline rescore when the API is down and only the scoring config changed); `build_candidate` takes an `Upstream`; `run_check` uses `open_readonly`; `guard` catches `STORAGE_ERRORS` (and `ValidationError`); the pipeline tests copy `tests/frozen/scoring.yaml`.
 
 Wiring only: `pipeline.py` and `cli.py` have no unit spec. Their logic lives in the functions of Tasks 4-16; this task adds the output formatters (unit-tested), the fake dataset, and the PIPELINE tests that prove the commands, stages and cache are wired.
 

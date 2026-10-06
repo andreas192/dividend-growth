@@ -15,6 +15,8 @@ Rules this phase implements:
 
 ### Task 11: Scoring config model and band interpolation
 
+> **Changed by Task 30 (`09-hardening.md`):** tests no longer read the owner's `config/scoring.yaml`. Create `tests/frozen/scoring.yaml` (a copy) here; `test_the_shipped_config_...` becomes `test_the_owners_config_parses_and_scores_every_known_metric` (shape only) plus `test_the_frozen_config_has_the_values_the_tests_rely_on`.
+
 **Files:**
 - Create: `config/scoring.yaml`, `src/dgi/scoring/__init__.py`, `src/dgi/scoring/config.py`, `src/dgi/scoring/bands.py`
 - Test: `tests/test_scoring_config.py`, `tests/test_scoring_bands.py`
@@ -752,6 +754,8 @@ git commit -m "feat: pillar scoring with coverage and red flags"
 ---
 
 ### Task 14: Score stage over the cache
+
+> **Changed by Task 30 (`09-hardening.md`):** `tests/cache_fixtures.py` defines `FROZEN_SCORING = tests/frozen/scoring.yaml` and loads `CFG` from it, not from `config/scoring.yaml`.
 
 Ties the pieces together: universe reasons (banks, insurers and REITs are listed with a reason, never scored), sector group, fair value, pillar scoring, percentiles and flags, written to `scores`, `score_detail`, `flags`.
 

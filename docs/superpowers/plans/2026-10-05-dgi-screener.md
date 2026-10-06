@@ -1,6 +1,6 @@
 # DGI Screener Implementation Plan
 
-**Status:** tasks 1-24 and 26 implemented; Task 25 (in-cluster deploy and acceptance) pending until the `invest` cluster exists
+**Status:** tasks 1-24, 26 and the hardening tasks 27-31 implemented (hardening merged to `develop` as #2, `7c096ac`); Task 25 (in-cluster deploy and acceptance) pending until the `invest` cluster exists. Open follow-up work that is not a task yet: `docs/next-steps.md`.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. The plan is split into one file per phase (see "Task map"); read this index, then only the phase file that holds your task.
 
@@ -60,6 +60,9 @@ The spec left these open or assumed something the API does not do. They are deci
 12. **The streak is bounded by the data's dividend history** (about 1970 for old companies), so KO and JNJ show `55+` against real records of about 63 years; the UI adds a plus to a streak that reaches the start of the history (Tasks 20-21).
 13. **`/health` always answers 200** (`{"status": "no_cache"}` before the first refresh) so Kubernetes readiness passes and the "no data yet" page is reachable; deprecation notices from the contract check are stored in the cache meta and shown in the footer (Tasks 15, 21).
 14. **The company page's daily charts are optional**: without a price source, or with the API down, the page keeps its annual charts and says so (Task 21).
+15. **A scoring-only edit survives an unreachable API.** `dgi refresh` still asks `/health` first so new upstream data is never skipped, but when the API cannot be reached and only the scoring config differs from the cache, it rescores from the cache and prints a warning. `--force`, a metrics change or a missing cache still fail (Task 28; spec "Errors" updated).
+16. **Only storage errors are cache errors.** `guard`, `dgi status` and `dgi check` treat I/O, serialization, memory and permission failures as "cache unreadable, run `dgi refresh --force`"; a SQL bug shows a traceback (Task 27).
+17. **Tests never read the owner's `config/scoring.yaml`** for values; they use `tests/frozen/scoring.yaml`. Only the owner's file's shape is tested (Task 30).
 
 ## Task map
 
@@ -73,19 +76,20 @@ The spec left these open or assumed something the API does not do. They are deci
 | `dgi-screener/06-web.md` | 18-22 | Cache queries, web support modules, web app (screener, company page), `serve` |
 | `dgi-screener/07-acceptance-local.md` | 23 | Real-API acceptance, memory measurement, spec update (gate for deploy) |
 | `dgi-screener/08-deploy.md` | 24-26 | Image, scripts and manifests; in-cluster acceptance (needs investment's cluster); docs and PR |
+| `dgi-screener/09-hardening.md` | 27-31 | Done after v1: narrow DuckDB error handling, offline rescore, footer on error pages and `size=` in the filter form, frozen test config, tool re-hash. **Wins over Tasks 2, 11, 14-18, 21 and 24 where they differ** |
 
-Tasks run in order. Task 23 is the gate for the deployment phase: if the measured refresh peak exceeds 1 GiB, stop and redesign (spec resource rule). Task 24 is files and offline checks and can follow Task 23 directly; Tasks 25-26 need investment's cluster `invest`, which does not exist yet (`../investment/deploy/` is absent) and is not this project's to create.
+Tasks run in order; Tasks 27-31 were done after Task 26 and amend earlier tasks (each amended task has a note pointing to phase 9). Task 23 is the gate for the deployment phase: if the measured refresh peak exceeds 1 GiB, stop and redesign (spec resource rule). Task 24 is files and offline checks and can follow Task 23 directly; Tasks 25-26 need investment's cluster `invest`, which does not exist yet (`../investment/deploy/` is absent) and is not this project's to create.
 
 ## A dry run on the real data
 
-Before this plan was finalized, the design was run end to end on a scratch copy of this code against the local investment API (and, for the web layer, rendered in a headless browser). It refreshed 6,716 companies in about 15 s with a 690 MB peak, scored about 926, and surfaced the two data issues behind clarifications 11 and 12. The plan's code blocks for Tasks 1-22 were then extracted from these files and run: they reproduce the verified implementation byte for byte and its test suite passes (about 350 tests). The expected numbers are in `dgi-screener/07-acceptance-local.md`.
+Before this plan was finalized, the design was run end to end on a scratch copy of this code against the local investment API (and, for the web layer, rendered in a headless browser). It refreshed 6,716 companies in about 15 s with a 690 MB peak, scored about 926, and surfaced the two data issues behind clarifications 11 and 12. The plan's code blocks for Tasks 1-22 were then extracted from these files and run: at that point they reproduced the verified implementation byte for byte and its test suite passed (about 350 tests). That held only until the first fixes after acceptance (review findings, then phase 9): the repo is now the source of truth for final code, and phases 1-8 are the build-order snapshot. Phase 9 records the hardening deltas; earlier review-fix commits (e.g. `guard` also catching `ValidationError`) are not back-ported into phases 1-8. The expected numbers are in `dgi-screener/07-acceptance-local.md`.
 
 ## File structure (what each file is responsible for)
 
 ```
 CLAUDE.md, README.md, pyproject.toml, .python-version, .gitignore, Dockerfile, .dockerignore
 config/scoring.yaml                    weights, bands, filters, tolerances, sector map (owner-edited)
-src/dgi/errors.py                      typed errors; the CLI guard maps DgiError to exit 1
+src/dgi/errors.py                      typed errors; the CLI guard maps DgiError to exit 1; STORAGE_ERRORS (DuckDB failures that mean a bad cache file)
 src/dgi/settings.py                    Settings (env), API_VERSION
 src/dgi/fsutil.py                      atomic_replace, file_sha256, text_sha256
 src/dgi/schema.py                      table DDL (single source of truth), arrow schemas, insert_rows
@@ -95,9 +99,9 @@ src/dgi/cli.py, pipeline.py            wiring only (refresh, status, check, serv
 src/dgi/client/                        http.py (ApiClient), contract.py, pulls.py, stage.py, series.py: the only HTTP code
 src/dgi/metrics/                       params.py, sqlrun.py, dividends.py, __init__.py (build_metrics), sql/*.sql
 src/dgi/scoring/                       config.py, bands.py, pillars.py, valuation.py, flags.py, stage.py
-src/dgi/cache/                         meta.py, build.py, checks.py, status.py, handle.py, screener.py, company.py
+src/dgi/cache/                         meta.py (incl. Upstream, plan_offline), build.py, checks.py, status.py, handle.py (CacheHandle, open_readonly), screener.py, company.py
 src/dgi/web/                           app.py, series.py, format.py, templates/, static/ (charts.js, app.css, vendor/echarts)
-tests/                                 offline; fake_api.py, sample_gold.py, cache_fixtures.py, web_fixtures.py build data in code
+tests/                                 offline; fake_api.py, sample_gold.py, cache_fixtures.py, web_fixtures.py build data in code; frozen/scoring.yaml is the scoring config the tests use
 deploy/k8s/                            kustomize base: namespace, PVC, web, service, refresh CronJob
 scripts/                               install_tools.sh, vendor_echarts.sh, image_tag.sh, build_image.sh, deploy.sh, delete.sh, open.sh, lib.sh, check_isolation.sh
 docs/                                  code-conventions.md, token-strategy.md, rate-limits.md, command.md, acceptance-local.md, specs, plans
