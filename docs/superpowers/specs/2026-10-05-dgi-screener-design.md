@@ -136,7 +136,7 @@ Annual series come from the cache. Daily price and the full-resolution yield-vs-
 
 ### Errors
 
-API unreachable or 503 (gold drift): refresh exits non-zero, the old cache stays, the CronJob shows the failure. Contract deprecated: warning in `/health` and the UI footer. Contract sunset or required column missing: refresh fails.
+API unreachable or 503 (gold drift): refresh exits non-zero, the old cache stays, the CronJob shows the failure. The one exception is a scoring-only edit (only the `config/scoring.yaml` hash differs from the cache): it is rescored from the cache and prints a warning that upstream was not checked. `--force`, a metrics change or a missing cache still fail. Contract deprecated: warning in `/health` and the UI footer. Contract sunset or required column missing: refresh fails.
 
 ## Views
 

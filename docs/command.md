@@ -20,7 +20,7 @@ uv run dgi check                            # quality checks on the live cache
 uv run dgi serve                            # web UI on 127.0.0.1:8760
 ```
 
-A scoring-only edit of `config/scoring.yaml` needs no new pull but still needs `dgi refresh` (it asks the API's `/health` first, so the API must be reachable) and a restart of `dgi serve` (the app loads the file once; the footer warns when the stored scores came from a different file).
+A scoring-only edit of `config/scoring.yaml` needs no new pull but still needs `dgi refresh` (it asks the API's `/health` first so new upstream data is not skipped; if the API is unreachable it rescores from the cache and prints a warning) and a restart of `dgi serve` (the app loads the file once; the footer warns when the stored scores came from a different file).
 
 Settings (env): `DGI_INVEST_API_URL` (default `http://127.0.0.1:8750`), `DGI_DATA_DIR` (default `data`), `DGI_SCORING_CONFIG` (default `config/scoring.yaml`), `DGI_HOST`, `DGI_PORT`.
 
@@ -53,7 +53,7 @@ context, never the current one.
 The cluster path is unverified until plan Task 25 is done: the scripts and manifests are built and tested offline, but they have not been run against a live cluster.
 
 ```bash
-scripts/install_tools.sh         # pinned kubectl and kind into .tools/ (checksum-verified)
+scripts/install_tools.sh         # pinned kubectl and kind into .tools/ (checksum-verified; installed files are re-hashed on every run)
 scripts/deploy.sh                # build the image, load it into kind, apply deploy/k8s
 scripts/deploy.sh --refresh      # the same, then run one refresh Job now and wait for it
 scripts/open.sh                  # port-forward the UI to http://127.0.0.1:8760

@@ -1,5 +1,11 @@
 """Typed errors. The CLI's guard turns any DgiError into `error: ...` on stderr and exit code 1."""
 
+import duckdb
+
+# DuckDB failures that come from the file or the machine (I/O, serialization, memory, a dead database), not from our SQL.
+# Programming, data and internal errors are bugs: they are not caught, so they show a traceback.
+STORAGE_ERRORS = (duckdb.OperationalError, duckdb.FatalException, duckdb.PermissionException)
+
 
 class DgiError(RuntimeError):
     pass

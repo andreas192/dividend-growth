@@ -74,6 +74,15 @@ def test_the_footer_warns_when_the_page_uses_a_different_scoring_config_than_the
     assert "Scores were built with a different scoring config than this page uses: run <code>dgi refresh</code>" in text
 
 
+@pytest.mark.parametrize("page, status", [("/nope", 404), ("/company/ZZZ", 404), ("/?min_streak=abc", 422)])
+def test_error_pages_carry_the_footer_with_the_drift_notice(tmp_path, page, status):
+    persist(scored_cache({"AAA": ("2080", {})}), tmp_path / "dgi.duckdb", make_meta(scoring_hash="old"))
+    with client_for(tmp_path, scoring_hash="new") as client:
+        response = client.get(page)
+    assert response.status_code == status
+    assert "Cache built 2026-10-05 07:00 UTC" in response.text and "different scoring config" in response.text
+
+
 def test_the_footer_has_no_scoring_notice_when_the_hashes_match_or_none_is_given(tmp_path):
     persist(cache_with({"AAA": ("2080", {})}), tmp_path / "dgi.duckdb", make_meta(scoring_hash="same"))
     for scoring_hash in ("same", None):

@@ -27,6 +27,16 @@ def test_guard_lets_other_exceptions_through():
         guard(bug)
 
 
+def test_guard_lets_a_sql_bug_through_instead_of_calling_it_a_cache_error():
+    import duckdb
+
+    def bug():
+        raise duckdb.BinderException("column nope not found")
+
+    with pytest.raises(duckdb.BinderException):
+        guard(bug)
+
+
 def test_guard_turns_duckdb_errors_into_exit_1_with_the_first_line(capsys):
     import duckdb
 

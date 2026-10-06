@@ -15,7 +15,8 @@ from dgi.scoring.config import ScoringConfig, load_scoring_config
 from dgi.scoring.stage import score_cache
 
 TODAY = dt.date(2026, 10, 5)
-CFG: ScoringConfig = load_scoring_config(Path(__file__).resolve().parent.parent / "config" / "scoring.yaml")
+FROZEN_SCORING = Path(__file__).resolve().parent / "frozen" / "scoring.yaml"  # a copy of config/scoring.yaml: editing the owner's file must not move the tests
+CFG: ScoringConfig = load_scoring_config(FROZEN_SCORING)
 
 # A healthy dividend grower's metrics_current row; tests override single values.
 GOOD: dict[str, Any] = {

@@ -10,6 +10,25 @@ from pathlib import Path
 
 import duckdb
 
+from dgi.errors import STORAGE_ERRORS, CacheMissing
+
+
+@contextmanager
+def open_readonly(path: Path) -> Iterator[duckdb.DuckDBPyConnection]:
+    """A read-only connection for the CLI. A missing, unopenable or unreadable file is `CacheMissing` with a way out; a SQL bug is not caught."""
+    if not path.exists():
+        raise CacheMissing(f"no cache at {path}; run `dgi refresh`")
+    try:
+        con = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error as exc:  # opening runs no SQL of ours: any failure is about the file
+        raise CacheMissing(f"cannot open the cache at {path}: {exc}; run `dgi refresh --force`") from exc
+    try:
+        yield con
+    except STORAGE_ERRORS as exc:
+        raise CacheMissing(f"the cache at {path} is unreadable: {exc}; run `dgi refresh --force`") from exc
+    finally:
+        con.close()
+
 
 class CacheHandle:
     """Opens the cache read-only and reopens it when the file is replaced.

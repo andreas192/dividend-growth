@@ -153,3 +153,8 @@ def test_the_not_scored_list_is_paged_and_a_page_past_the_end_clamps(tmp_path):
     assert "Page 1 of 2" in first and "Next" in first and "unscored=1" in first and "page=2" in first
     assert len(links(second)) == 2 and "Page 2 of 2" in second and "Previous" in second
     assert len(links(past)) == 2 and "Page 2 of 2" in past
+
+
+def test_the_filter_form_carries_a_non_default_page_size(web):
+    assert '<input type="hidden" name="size" value="20">' in web.get("/?size=20").text
+    assert 'name="size"' not in web.get("/").text   # the default page size is not repeated in the URL

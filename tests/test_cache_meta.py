@@ -1,7 +1,7 @@
 import duckdb
 import pytest
 
-from dgi.cache.meta import RefreshPlan, next_meta, plan_refresh, read_meta, write_meta
+from dgi.cache.meta import RefreshPlan, Upstream, next_meta, plan_offline, plan_refresh, read_meta, write_meta
 from tests.cache_fixtures import cache_with, make_meta, persist
 
 KEY, V, M, S = "hash-1|2026-10-04T06:00:00+00:00", "v1", "1:abc", "s1"
@@ -48,6 +48,24 @@ def test_write_meta_replaces_the_row():
 )
 def test_plan_refresh_picks_the_smallest_stage_that_has_work(meta, args, expected):
     assert plan_refresh(meta, *args) == expected
+
+
+@pytest.mark.parametrize(
+    "meta, metrics_version, scoring_hash, expected",
+    [
+        (make_meta(), M, "s2", RefreshPlan(False, True, "scoring config changed")),
+        (make_meta(), M, S, None),             # nothing to do: freshness cannot be confirmed without the API
+        (make_meta(), "2:abc", "s2", None),    # a metrics change needs a pull
+        (None, M, "s2", None),                 # no cache to rescore
+    ],
+)
+def test_plan_offline_only_rescores_a_cache_whose_scoring_config_changed(meta, metrics_version, scoring_hash, expected):
+    assert plan_offline(meta, metrics_version, scoring_hash) == expected
+
+
+def test_upstream_of_a_cache_is_what_it_was_built_from():
+    meta = make_meta(contract_warnings="contract v1 is deprecated")
+    assert Upstream.of_cache(meta) == Upstream(meta.upstream_key, meta.upstream_built_at, "v1", "contract v1 is deprecated")
 
 
 def test_a_data_change_beats_a_scoring_change():

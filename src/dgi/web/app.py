@@ -72,12 +72,20 @@ def no_cache(request: Request) -> Response:
     return render(request, "no_cache.html", {"footer": None}, status=503)
 
 
+def page_footer(request: Request) -> dict[str, Any] | None:
+    """The footer for pages that did not read the cache themselves (error pages); None when there is no cache."""
+    state = request.app.state
+    with state.handle.connection() as con:
+        return None if con is None else footer(read_meta_from(con), state.scoring_hash)
+
+
 def not_found(request: Request, exc: Exception) -> Response:
-    return render(request, "error.html", {"footer": None, "title": "Not found", "message": "There is nothing at this address."}, status=404)
+    return render(request, "error.html", {"footer": page_footer(request), "title": "Not found", "message": "There is nothing at this address."}, status=404)
 
 
 def bad_query(request: Request, exc: BadQuery) -> Response:
-    return render(request, "error.html", {"footer": None, "title": "Check the filters", "message": f"{exc.param}: {exc.reason}"}, status=422)
+    context = {"footer": page_footer(request), "title": "Check the filters", "message": f"{exc.param}: {exc.reason}"}
+    return render(request, "error.html", context, status=422)
 
 
 def screener(request: Request) -> Response:

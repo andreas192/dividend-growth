@@ -10,14 +10,15 @@ from starlette.applications import Starlette
 
 from dgi.cache.build import compact_into, discard, new_path, prepare_work_file, swap_in
 from dgi.cache.checks import CheckResult, run_cache_checks, verify_cache
-from dgi.cache.meta import CacheMeta, RefreshPlan, next_meta, plan_refresh, read_meta, write_meta
+from dgi.cache.handle import open_readonly
+from dgi.cache.meta import CacheMeta, RefreshPlan, Upstream, next_meta, plan_offline, plan_refresh, read_meta, write_meta
 from dgi.cache.status import CacheStatus, read_status
-from dgi.client.contract import ContractStatus, fetch_contract
-from dgi.client.http import ApiClient, Health
+from dgi.client.contract import fetch_contract
+from dgi.client.http import ApiClient
 from dgi.client.pulls import build_pulls
 from dgi.client.series import ApiPriceSource
 from dgi.client.stage import stage_pull
-from dgi.errors import CacheCheckError, CacheMissing
+from dgi.errors import ApiUnavailable, CacheCheckError
 from dgi.fsutil import file_sha256
 from dgi.metrics import MetricsResult, build_metrics, metrics_version
 from dgi.results import RefreshResult
@@ -40,8 +41,7 @@ def build_candidate(
     cfg: ScoringConfig,
     plan: RefreshPlan,
     previous: CacheMeta | None,
-    health: Health,
-    contract: ContractStatus,
+    upstream: Upstream,
     today: date,
     now: str,
     version: str,
@@ -58,7 +58,8 @@ def build_candidate(
             rows = pull_all(con, client, today)
             metrics = build_metrics(con, today, cfg.metrics)
         scores = score_cache(con, cfg, today)
-        write_meta(con, next_meta(plan, previous, health.upstream_key, health.gold_built_at, contract.version, "; ".join(contract.warnings), version, scoring_hash, now))
+        meta = next_meta(plan, previous, upstream.key, upstream.built_at, upstream.contract_version, upstream.contract_warnings, version, scoring_hash, now)
+        write_meta(con, meta)
         candidate = new_path(live)
         compact_into(con, candidate)
         return candidate, rows, metrics, scores
@@ -67,19 +68,34 @@ def build_candidate(
         discard(work)
 
 
+def choose_plan(
+    client: ApiClient, previous: CacheMeta | None, version: str, scoring_hash: str, force: bool
+) -> tuple[Upstream, RefreshPlan, list[str]]:
+    """Ask the API what changed. If it cannot be asked, a scoring-only edit is still rescored from the cache; anything else fails."""
+    try:
+        health = client.health()
+        contract = fetch_contract(client)
+    except ApiUnavailable as exc:
+        plan = None if force else plan_offline(previous, version, scoring_hash)
+        if plan is None or previous is None:
+            raise
+        notice = f"the API is unreachable, so upstream was not checked; rescored the cached data ({str(exc).splitlines()[0]})"
+        return Upstream.of_cache(previous), plan, [notice]
+    upstream = Upstream(health.upstream_key, health.gold_built_at, contract.version, "; ".join(contract.warnings))
+    return upstream, plan_refresh(previous, upstream.key, upstream.contract_version, version, scoring_hash, force), contract.warnings
+
+
 def run_refresh(settings: Settings, client: ApiClient, *, today: date, now: datetime, force: bool = False) -> RefreshResult:
     cfg = load_scoring_config(settings.scoring_path)
-    health = client.health()
-    contract = fetch_contract(client)
     live = settings.cache_path
     previous = read_meta(live)
     version = metrics_version(cfg.metrics)
     scoring_hash = file_sha256(settings.scoring_path)
-    plan = plan_refresh(previous, health.upstream_key, contract.version, version, scoring_hash, force)
+    upstream, plan, warnings = choose_plan(client, previous, version, scoring_hash, force)
     if not (plan.stage1 or plan.score):
-        return RefreshResult("up to date", plan.reason, health.upstream_key, {}, None, None, [], contract.warnings)
+        return RefreshResult("up to date", plan.reason, upstream.key, {}, None, None, [], warnings)
     candidate, rows, metrics, scores = build_candidate(
-        settings, client, cfg, plan, previous, health, contract, today, now.isoformat(), version, scoring_hash
+        settings, client, cfg, plan, previous, upstream, today, now.isoformat(), version, scoring_hash
     )
     checks = verify_cache(candidate, live)
     failed = [c for c in checks if not c.passed]
@@ -90,7 +106,7 @@ def run_refresh(settings: Settings, client: ApiClient, *, today: date, now: date
             + "; ".join(f"{c.name}: {c.detail}" for c in failed)
         )
     swap_in(candidate, live)
-    return RefreshResult("rebuilt" if plan.stage1 else "rescored", plan.reason, health.upstream_key, rows, metrics, scores, checks, contract.warnings)
+    return RefreshResult("rebuilt" if plan.stage1 else "rescored", plan.reason, upstream.key, rows, metrics, scores, checks, warnings)
 
 
 def run_status(settings: Settings) -> CacheStatus:
@@ -98,19 +114,8 @@ def run_status(settings: Settings) -> CacheStatus:
 
 
 def run_check(settings: Settings) -> list[CheckResult]:
-    path = settings.cache_path
-    if not path.exists():
-        raise CacheMissing(f"no cache at {path}; run `dgi refresh`")
-    try:
-        con = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error as exc:
-        raise CacheMissing(f"cannot open the cache at {path}: {exc}; run `dgi refresh --force`") from exc
-    try:
+    with open_readonly(settings.cache_path) as con:
         return run_cache_checks(con, None)
-    except duckdb.Error as exc:
-        raise CacheMissing(f"the cache at {path} is unreadable: {exc}; run `dgi refresh --force`") from exc
-    finally:
-        con.close()
 
 
 def build_web_app(settings: Settings, client: ApiClient) -> Starlette:
