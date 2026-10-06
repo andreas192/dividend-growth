@@ -14,5 +14,12 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(grep *)",
+      "Bash(git status *)",
+      "Bash(git show *)"
+    ]
   }
 }
